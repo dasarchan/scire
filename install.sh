@@ -2,18 +2,18 @@
 # Scire installer for macOS and Linux. No sudo or provider credentials required.
 set -eu
 ORIGINAL_PATH=$PATH
-VERSION=${SCIRE_VERSION:-0.1.4}
+VERSION=${SCIRE_VERSION:-0.1.5}
 OPENCODE_VERSION=1.18.35
 RELEASE=https://github.com/dasarchan/scire/releases/download/v$VERSION
 fail() { printf '\nScire: %s\n' "$*" >&2; exit 1; }
 case "${1:-}" in
-    --help) printf '%s\n' 'Install Scire, uv/Python, and OpenCode when needed.' 'Usage: sh install.sh [--help]' 'SCIRE_VERSION=0.1.4 selects a release.'; exit 0 ;;
+    --help) printf '%s\n' 'Install Scire, uv/Python, and OpenCode when needed.' 'Usage: sh install.sh [--help]' 'SCIRE_VERSION=0.1.5 selects a release.'; exit 0 ;;
     '') ;;
     *) fail "Unknown argument: $1 (try --help)" ;;
 esac
 case "$(uname -s)" in Darwin|Linux) ;; *) fail 'Supported systems: macOS and Linux.' ;; esac
 # Reject malformed release names before constructing URLs.
-case "$VERSION" in ''|*[!0-9.]*|.*|*..*|*.) fail 'SCIRE_VERSION must look like 0.1.4.' ;; esac
+case "$VERSION" in ''|*[!0-9.]*|.*|*..*|*.) fail 'SCIRE_VERSION must look like 0.1.5.' ;; esac
 command -v curl >/dev/null 2>&1 || fail 'Install curl, then run this installer again.'
 command -v git >/dev/null 2>&1 || fail 'Install Git first (macOS: xcode-select --install), then try again.'
 TMP=$(mktemp -d)

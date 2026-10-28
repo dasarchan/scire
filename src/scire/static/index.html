@@ -10,10 +10,7 @@
   </head>
   <body>
     <header>
-      <a class="wordmark" href="/"
-        >S<span class="brand-line"></span>cire<span class="local-tag"
-          >LOCAL</span
-        ></a
+      <a class="wordmark" href="/">Scire</a
       ><button
         id="nav-toggle"
         aria-label="Collapse sidebar"
@@ -84,23 +81,17 @@
     </header>
     <div class="layout">
       <aside id="nav">
-        <div class="nav-label">WORKSPACE</div>
         <button data-view="home" class="selected">
           ◫ <span>Overview</span></button
         ><button data-view="knowledge">⌘ <span>Knowledge</span></button>
         <div id="session-nav" class="session-nav"></div>
         <div class="nav-bottom">
-          <button data-view="settings">⚙ <span>Settings</span></button
-          ><small>Your learning stays on this machine.</small>
+          <button data-view="settings">⚙ <span>Settings</span></button>
         </div>
       </aside>
       <main id="main">
-        <p class="eyebrow">YOUR UNDERSTANDING, UP TO DATE</p>
-        <h1>Keep the code in mind.</h1>
-        <p class="subtitle">
-          Build a working model of your codebase. Make the next change with
-          confidence.
-        </p>
+        <h1>Overview</h1>
+        <p class="subtitle" hidden></p>
         <div id="content"></div>
       </main>
     </div>

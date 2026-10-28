@@ -74,14 +74,11 @@ function toast(message) {
 function areaBar(a) {
   return `<div class="area"><div class="area-top"><span>${escape(a.name)}</span><span>${percent(a.mastery)}%</span></div><div class="bar"><span style="width:${percent(a.mastery)}%"></span></div></div>`;
 }
-function setHeading(
-  title,
-  subtitle,
-  eyebrow = "YOUR UNDERSTANDING, UP TO DATE",
-) {
+function setHeading(title, subtitle = "") {
   main.querySelector(":scope > h1").textContent = title;
-  main.querySelector(":scope > .subtitle").textContent = subtitle;
-  main.querySelector(":scope > .eyebrow").textContent = eyebrow;
+  const description = main.querySelector(":scope > .subtitle");
+  description.textContent = subtitle;
+  description.hidden = !subtitle;
 }
 function currentAnchors() {
   return workspace?.modules.find((m) => m.id === activeModule)?.resolved || {};
@@ -174,7 +171,7 @@ function bindRepositoryConnections() {
   const button = document.querySelector("#manage-repos");
   if (button)
     button.onclick = () => {
-      modal.innerHTML = `<p class="eyebrow">CONNECT YOUR CODE</p><h2>Choose repositories in your terminal.</h2><p>Scire searches your folders for Git repositories. Use the arrow keys to move, Space to select, and Enter to connect. You can type to filter the list.</p><div class="terminal-command"><code>scire setup</code><button class="secondary" id="copy-setup-command">Copy command</button></div><p><small>Already connected repositories start selected. Your learning history is kept if you change the selection.</small></p><div class="dialog-actions"><button class="primary" data-close>Done</button></div>`;
+      modal.innerHTML = `<h2>Choose repositories in your terminal.</h2><p>Scire searches your folders for Git repositories. Use the arrow keys to move, Space to select, and Enter to connect. You can type to filter the list.</p><div class="terminal-command"><code>scire setup</code><button class="secondary" id="copy-setup-command">Copy command</button></div><p><small>Already connected repositories start selected. Your learning history is kept if you change the selection.</small></p><div class="dialog-actions"><button class="primary" data-close>Done</button></div>`;
       modal.showModal();
       modal.querySelector("[data-close]").onclick = () => modal.close();
       modal.querySelector("#copy-setup-command").onclick = async () => {
@@ -207,28 +204,156 @@ async function refreshRepositoryConnections() {
       }
     }
     const model = document.querySelector('#setup-form input[name="model"]');
-    if (model && !model.value && next.profile.model)
-      model.value = next.profile.model;
+    if (
+      model &&
+      !model.value &&
+      next.profile.model &&
+      !model.closest(".model-picker").dataset.edited
+    )
+      model.closest(".model-picker").setModel(next.profile.model);
   } finally {
     repositoryPolling = false;
   }
 }
-function setup() {
-  setHeading(
-    "Make this your workspace.",
-    "A few details, then the code.",
-    "WELCOME TO SCIRE",
-  );
-  content.innerHTML = `<section class="card setup"><h2>A small introduction</h2><p>Tell Scire about your experience. Your repositories are chosen in terminal setup.</p><form id="setup-form"><label>Your name</label><input name="name" required placeholder="Alex" value="${escape(state.profile.name)}"><label>What do you work on?</label><textarea name="role" placeholder="Backend engineer, new to this repository…">${escape(state.profile.role)}</textarea>${repositoryConnections()}<label>OpenCode model</label><input name="model" required list="models" placeholder="provider/model" value="${escape(state.profile.model)}"><datalist id="models"></datalist><label>Fast triage model (optional)</label><input name="cheap_model" list="models" placeholder="Defaults to your primary model" value="${escape(state.profile.cheap_model)}"><p><small>OpenCode handles provider login. To connect an account, run <code>scire setup --connect</code> in your terminal. Keys never go in this form.</small></p><label style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="map_now" checked style="width:auto">Build repository maps in the background</label><button class="primary" type="submit">Create workspace →</button></form></section>`;
-  api("models")
-    .then((r) => {
-      const node = document.querySelector("#models");
-      if (node)
-        node.innerHTML = r.models
-          .map((m) => `<option value="${escape(m)}">`)
+function profileFields() {
+  return `<section class="settings-section"><div class="section-intro"><h2>About you</h2><p>Lessons adapt to your experience.</p></div><div class="section-fields"><label for="profile-name">Your name</label><input id="profile-name" name="name" required placeholder="Alex" value="${escape(state.profile.name)}"><label for="profile-role">What do you work on?</label><textarea id="profile-role" name="role" placeholder="Your role and experience with this codebase">${escape(state.profile.role)}</textarea></div></section>`;
+}
+function modelPicker(name, label, optional = false) {
+  const value = state.profile[name] || "";
+  return `<fieldset class="model-picker" data-name="${name}" data-optional="${optional}"><legend>${label}</legend><input type="hidden" name="${name}" value="${escape(value)}"><div class="model-selects"><div><label for="${name}-provider">Provider</label><select id="${name}-provider" ${optional ? "" : "required"} aria-label="${label} provider"><option value="">Loading providers…</option></select></div><div><label for="${name}-model">Model</label><select id="${name}-model" aria-label="${label}" ${optional ? "" : "required"}><option value="">Loading models…</option></select></div></div>${optional ? '<p class="field-help">Use a faster model for short questions. Leave unset to use your teaching model.</p>' : ""}<div class="model-status" role="status"></div><button type="button" class="text-button model-manual-toggle">Enter a custom model ID</button><div class="model-manual" hidden><label for="${name}-custom">${label} ID</label><input id="${name}-custom" placeholder="provider/model" value="${escape(value)}" disabled></div></fieldset>`;
+}
+function modelFields() {
+  return `<section class="settings-section"><div class="section-intro"><h2>Models</h2><p>Choose from your OpenCode providers.</p></div><div class="section-fields">${modelPicker("model", "Teaching model")}${modelPicker("cheap_model", "Quick answers", true)}<div class="provider-help">To connect another provider, run <code>scire setup --connect</code> in your terminal.</div></div></section>`;
+}
+let modelCatalogPromise;
+function bindModelPickers() {
+  document.querySelectorAll(".model-picker").forEach((field) => {
+    const value = field.querySelector('input[type="hidden"]');
+    const provider = field.querySelector('select[id$="-provider"]');
+    const model = field.querySelector('select[id$="-model"]');
+    const custom = field.querySelector(".model-manual input");
+    const toggle = field.querySelector(".model-manual-toggle");
+    const status = field.querySelector(".model-status");
+    const optional = field.dataset.optional === "true";
+    let catalog = [],
+      manual = false;
+    const remember = () => {
+      field.dataset.edited = "true";
+    };
+    const render = () => {
+      const priorProvider =
+        field.dataset.edited && !manual ? provider.value : "";
+      const models = [
+        ...new Set([...catalog, ...(value.value ? [value.value] : [])]),
+      ].sort();
+      const providers = [...new Set(models.map((id) => id.split("/")[0]))];
+      provider.innerHTML =
+        `<option value="">${optional ? "Use teaching model" : "Choose provider"}</option>` +
+        providers
+          .map((id) => `<option value="${escape(id)}">${escape(id)}</option>`)
           .join("");
-    })
-    .catch(() => {});
+      provider.value = priorProvider || value.value.split("/")[0] || "";
+      renderModels(models);
+    };
+    const renderModels = (
+      models = [
+        ...new Set([...catalog, ...(value.value ? [value.value] : [])]),
+      ].sort(),
+    ) => {
+      model.innerHTML =
+        `<option value="">${provider.value ? "Choose model" : optional ? "Same as teaching model" : "Select a provider first"}</option>` +
+        models
+          .filter((id) => id.startsWith(provider.value + "/"))
+          .map(
+            (id) =>
+              `<option value="${escape(id)}">${escape(id.slice(id.indexOf("/") + 1))}</option>`,
+          )
+          .join("");
+      model.disabled = manual || !provider.value;
+      model.value = value.value;
+    };
+    field.setModel = (id) => {
+      value.value = id;
+      custom.value = id;
+      provider.value = "";
+      render();
+    };
+    provider.onchange = () => {
+      remember();
+      value.value = "";
+      renderModels();
+    };
+    model.onchange = () => {
+      remember();
+      value.value = model.value;
+      custom.value = value.value;
+    };
+    custom.oninput = () => {
+      remember();
+      value.value = custom.value.trim();
+      custom.setCustomValidity(
+        (!value.value && optional) || /^[\w.-]+\/[^\s]+$/.test(value.value)
+          ? ""
+          : "Use provider/model, for example openai/gpt-5.",
+      );
+    };
+    toggle.onclick = () => {
+      manual = !manual;
+      field.querySelector(".model-selects").hidden = manual;
+      field.querySelector(".model-manual").hidden = !manual;
+      custom.disabled = !manual;
+      custom.required = manual && !optional;
+      provider.disabled = manual;
+      model.disabled = manual || !provider.value;
+      toggle.textContent = manual
+        ? "Choose from OpenCode models"
+        : "Enter a custom model ID";
+      if (manual) {
+        custom.value = value.value;
+        custom.focus();
+        custom.oninput();
+      } else {
+        provider.value = "";
+        render();
+        provider.focus();
+      }
+    };
+    const load = async () => {
+      status.textContent = "Loading models from OpenCode…";
+      try {
+        modelCatalogPromise ||= api("models").catch((error) => {
+          modelCatalogPromise = null;
+          throw error;
+        });
+        const result = await modelCatalogPromise;
+        if (!field.isConnected) return;
+        catalog = result.models;
+        render();
+        status.textContent = catalog.length
+          ? ""
+          : "No models found. Connect a provider or enter a custom model ID.";
+      } catch (error) {
+        if (!field.isConnected) return;
+        render();
+        status.replaceChildren(
+          document.createTextNode("Couldn’t load OpenCode models. "),
+        );
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "text-button";
+        retry.textContent = "Retry";
+        retry.onclick = load;
+        status.append(retry);
+      }
+    };
+    render();
+    load();
+  });
+}
+function setup() {
+  setHeading("Set up Scire");
+  content.innerHTML = `<section class="setup"><form id="setup-form">${profileFields()}${modelFields()}${repositoryConnections()}<div class="form-actions"><label class="checkbox-label"><input type="checkbox" name="map_now" checked>Build repository maps in the background</label><button class="primary" type="submit">Create workspace →</button></div></form></section>`;
+  bindModelPickers();
   document.querySelector("#setup-form").onsubmit = async (e) => {
     e.preventDefault();
     const button = e.target.querySelector('button[type="submit"]');
@@ -292,7 +417,7 @@ async function openNew(rid, target = "learn", focus = null) {
 }
 function conceptsDialog(rid) {
   const repo = state.repos.find((r) => r.id === rid);
-  modal.innerHTML = `<p class="eyebrow">${escape(repo.name)}</p><h2>Choose an idea to explore</h2><div class="knowledge-tree">${areaTree(repo.map)}</div><div class="dialog-actions"><button class="secondary" data-close>Close</button></div>`;
+  modal.innerHTML = `<h2>Choose an idea to explore</h2><div class="knowledge-tree">${areaTree(repo.map)}</div><div class="dialog-actions"><button class="secondary" data-close>Close</button></div>`;
   modal.showModal();
   modal.querySelector("[data-close]").onclick = () => modal.close();
   modal.querySelectorAll("[data-focus]").forEach(
@@ -348,7 +473,7 @@ function branchDialog() {
   });
 }
 function askForm(session = null) {
-  return `<form class="ask" id="ask-form"><textarea name="question" rows="1" placeholder="What would you like to understand?" aria-label="Ask about the codebase"></textarea><button class="primary">Explore question →</button></form><p class="ask-caption">${session ? "Your question stays as a topic in this session." : "A quick answer, a focused lesson, or a deeper round — depending on your question."}</p>`;
+  return `<form class="ask" id="ask-form"><textarea name="question" rows="1" placeholder="What would you like to understand?" aria-label="Ask about the codebase"></textarea><button class="primary">Explore question →</button></form>`;
 }
 function bindAsk(session = null) {
   const form = document.querySelector("#ask-form");
@@ -419,14 +544,13 @@ function render() {
   document.querySelector("#session-nav").innerHTML = "";
   if (view === "knowledge") {
     setHeading(
-      "What you know, and what to revisit.",
-      "A provisional picture, shaped by your answers and changes in the code.",
-      "KNOWLEDGE",
+      "Knowledge",
+      "Your understanding by area, based on your answers.",
     );
     content.innerHTML = repos
       .map(
         (r) =>
-          `<section class="card"><div class="card-heading"><h2>${escape(r.name)}</h2><span>${r.map.concepts.length} CONCEPTS</span></div><div class="knowledge-tree">${areaTree(r.map)}</div>${!r.map.areas.length ? "<p>The map is still being prepared.</p>" : ""}</section>`,
+          `<section class="card"><div class="card-heading"><h2>${escape(r.name)}</h2><span>${r.map.concepts.length} concepts</span></div><div class="knowledge-tree">${areaTree(r.map)}</div>${!r.map.areas.length ? "<p>The map is still being prepared.</p>" : ""}</section>`,
       )
       .join("");
     content
@@ -446,12 +570,9 @@ function render() {
     return;
   }
   if (view === "settings") {
-    setHeading(
-      "Make Scire fit your work.",
-      "Your profile and model preferences. Provider credentials remain in OpenCode.",
-      "SETTINGS",
-    );
-    content.innerHTML = `<section class="card setup"><h2>Profile & models</h2><form id="settings-form"><label>Name</label><input name="name" value="${escape(state.profile.name)}"><label>Your experience</label><textarea name="role">${escape(state.profile.role)}</textarea><label>Primary model</label><input name="model" required value="${escape(state.profile.model)}"><label>Fast triage model (optional)</label><input name="cheap_model" value="${escape(state.profile.cheap_model)}"><p><small>Choose models available through your connected OpenCode providers. Triage uses this fast model when configured.</small></p><button class="primary">Save settings</button></form>${repositoryConnections()}<div class="card-footer"><small>Your preferences stay on this machine.</small><button class="secondary" id="quit-server">Quit Scire</button></div></section>`;
+    setHeading("Settings");
+    content.innerHTML = `<section class="setup"><form id="settings-form">${profileFields()}${modelFields()}<div class="form-actions"><button class="primary">Save settings</button></div></form>${repositoryConnections()}<div class="card-footer"><button class="secondary" id="quit-server">Quit Scire</button></div></section>`;
+    bindModelPickers();
     document.querySelector("#settings-form").onsubmit = async (e) => {
       e.preventDefault();
       try {
@@ -470,22 +591,18 @@ function render() {
     autosize();
     return;
   }
-  setHeading(
-    "Keep the code in mind.",
-    "Build a working model of your codebase. Make the next change with confidence.",
-  );
+  setHeading("Overview");
   const sessions = state.sessions.filter(
     (s) => !selectedRepo || s.repo === selectedRepo,
   );
-  content.innerHTML = `<div class="grid"><section class="card"><div class="card-heading"><h2>Learn</h2><span>BUILD YOUR MENTAL MODEL</span></div>${repos.map((r) => `<div><h3>${escape(r.name)} <span class="pill ${r.map.status === "ready" ? "blue" : ""}">${escape(r.map.status || "not mapped")}</span></h3><p><small>${r.map.concepts.length} mapped concepts${r.map.metrics ? ` · ${Math.round(r.map.metrics.seconds)}s · $${Number(r.map.metrics.cost).toFixed(3)} reported` : ""}</small></p>${r.map.areas.slice(0, 5).map(areaBar).join("") || '<div class="empty"><p>Your map organizes the code into areas you can learn one at a time.</p></div>'}${r.map.status === "working" ? `<div class="map-activity"><i class="pulse"></i>${escape(r.map.activity || "Exploring source…")}</div>` : ""}${r.map.error ? `<div class="error">${escape(r.map.error)}</div>` : ""}<div class="card-footer"><button class="secondary" data-concepts="${r.id}" ${!r.map.concepts.length ? "disabled" : ""}>View concepts</button>${r.map.status === "ready" ? `<button class="primary" data-learn="${r.id}">Start learning →</button>` : `<button class="${r.map.status === "working" ? "secondary" : "primary"}" data-map="${r.id}" ${r.map.status === "working" ? "disabled" : ""}>${r.map.status === "working" ? "Mapping…" : "Build map →"}</button>`}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">') || '<p class="empty">Run scire setup in your terminal to choose repositories.</p>'}</section><section class="card"><div class="card-heading"><h2>Review</h2><span>UNDERSTAND THE CHANGE</span></div>${repos.map((r) => `<h3>${escape(r.name)}</h3><div data-reviews="${r.id}" class="review-list"><p class="quiet">Loading pull requests…</p></div>`).join("")}<div class="card-footer"><small>About 5 minutes in code you know.</small><button class="secondary" id="branch-review">Choose a branch ↗</button></div></section></div>${askForm()}<section class="card sessions"><div class="card-heading"><h2>Recent sessions</h2><span>CONTINUE WHERE YOU LEFT OFF</span></div>${
+  content.innerHTML = `<div class="grid"><section class="card"><div class="card-heading"><h2>Learn</h2></div>${repos.map((r) => `<div><h3>${escape(r.name)} <span class="pill ${r.map.status === "ready" ? "blue" : ""}">${escape(r.map.status || "not mapped")}</span></h3><p><small>${r.map.concepts.length} mapped concepts${r.map.metrics ? ` · ${Math.round(r.map.metrics.seconds)}s · $${Number(r.map.metrics.cost).toFixed(3)} reported` : ""}</small></p>${r.map.areas.slice(0, 5).map(areaBar).join("") || '<div class="empty"><p>Build a map to start learning.</p></div>'}${r.map.status === "working" ? `<div class="map-activity"><i class="pulse"></i>${escape(r.map.activity || "Exploring source…")}</div>` : ""}${r.map.error ? `<div class="error">${escape(r.map.error)}</div>` : ""}<div class="card-footer"><button class="secondary" data-concepts="${r.id}" ${!r.map.concepts.length ? "disabled" : ""}>View concepts</button>${r.map.status === "ready" ? `<button class="primary" data-learn="${r.id}">Start learning →</button>` : `<button class="${r.map.status === "working" ? "secondary" : "primary"}" data-map="${r.id}" ${r.map.status === "working" ? "disabled" : ""}>${r.map.status === "working" ? "Mapping…" : "Build map →"}</button>`}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">') || '<p class="empty">Run scire setup in your terminal to choose repositories.</p>'}</section><section class="card"><div class="card-heading"><h2>Review</h2></div>${repos.map((r) => `<h3>${escape(r.name)}</h3><div data-reviews="${r.id}" class="review-list"><p class="quiet">Loading pull requests…</p></div>`).join("")}<div class="card-footer"><button class="secondary" id="branch-review">Choose a branch ↗</button></div></section></div>${askForm()}<section class="card sessions"><div class="card-heading"><h2>Recent sessions</h2></div>${
     sessions
       .slice(0, 10)
       .map(
         (s) =>
           `<div class="row"><div><h3>${escape(s.title)}</h3><p>${escape(state.repos.find((r) => r.id === s.repo)?.name)} · ${s.target === "learn" ? "Learning" : "Review"} · ${escape(s.status)} · ${ago(s.updated_at)}</p></div><button class="secondary" data-session="${s.repo}/${s.id}">Continue →</button></div>`,
       )
-      .join("") ||
-    '<div class="empty">Your first learning session starts here.</div>'
+      .join("") || '<div class="empty">No sessions yet.</div>'
   }</section>`;
   content
     .querySelectorAll("[data-learn]")
@@ -551,7 +668,7 @@ function bindTopicRefs() {
 }
 function renderDepth() {
   const s = workspace;
-  content.innerHTML = `${renderTopics(s)}<section class="card depth-form"><p class="eyebrow">BEFORE WE BEGIN</p><h2>Choose how deep to go.</h2><p>Skip areas you do not need, skim familiar ones, or take a deeper look. Your answers will refine the learning plan.</p><form id="depth-form"><div class="depth-list">${s.map.areas
+  content.innerHTML = `${renderTopics(s)}<section class="card depth-form"><h2>Choose how deep to go.</h2><p>Skip areas you do not need, skim familiar ones, or take a deeper look. Your answers will refine the learning plan.</p><form id="depth-form"><div class="depth-list">${s.map.areas
     .map(
       (a) =>
         `<div class="row"><div><h3>${escape(a.name)}</h3><p>${escape(a.summary)}</p><small>${percent(a.mastery)}% estimated understanding</small></div><select name="${escape(a.id)}" aria-label="Depth for ${escape(a.name)}">${["skip", "skim", "standard", "deep"].map((d) => `<option value="${d}" ${(s.depths[a.id] || "standard") === d ? "selected" : ""}>${d[0].toUpperCase() + d.slice(1)}</option>`).join("")}</select></div>`,
@@ -606,7 +723,7 @@ function renderFinding(f, module) {
     stance: "unsure",
     body: f.draft,
   };
-  return `<section class="finding" data-finding="${escape(f.key)}"><div class="card-heading"><h3>${escape(f.title)}</h3><span class="pill">${escape(f.severity)}</span></div><div class="finding-label">FAILURE SCENARIO</div><p>${escape(f.scenario)}</p><div class="finding-label">EVIDENCE & IMPACT</div><p>${escape(f.evidence)}</p><p>${escape(f.impact)}</p><button class="secondary" data-anchor="${escape(f.ref)}">Inspect evidence ↗</button><div class="stance">${["agree", "unsure", "disagree"].map((x) => `<button class="${draft.stance === x ? "active" : ""}" data-stance="${x}" data-fid="${escape(f.key)}">${x[0].toUpperCase() + x.slice(1)}</button>`).join("")}</div><label>Comment draft — editable, not posted</label><textarea data-draft="${escape(f.key)}">${escape(draft.body)}</textarea><div class="card-footer"><small>${workspace.posted?.[f.key] ? "Posted to GitHub" : "Nothing leaves Scire until you explicitly post."}</small><button class="secondary" data-preview="${escape(f.key)}">Preview exact comment →</button></div></section>`;
+  return `<section class="finding" data-finding="${escape(f.key)}"><div class="card-heading"><h3>${escape(f.title)}</h3><span class="pill">${escape(f.severity)}</span></div><div class="finding-label">Failure scenario</div><p>${escape(f.scenario)}</p><div class="finding-label">Evidence and impact</div><p>${escape(f.evidence)}</p><p>${escape(f.impact)}</p><button class="secondary" data-anchor="${escape(f.ref)}">Inspect evidence ↗</button><div class="stance">${["agree", "unsure", "disagree"].map((x) => `<button class="${draft.stance === x ? "active" : ""}" data-stance="${x}" data-fid="${escape(f.key)}">${x[0].toUpperCase() + x.slice(1)}</button>`).join("")}</div><label>Comment draft — editable, not posted</label><textarea data-draft="${escape(f.key)}">${escape(draft.body)}</textarea><div class="card-footer"><small>${workspace.posted?.[f.key] ? "Posted to GitHub" : "Nothing leaves Scire until you explicitly post."}</small><button class="secondary" data-preview="${escape(f.key)}">Preview exact comment →</button></div></section>`;
 }
 function renderWorkspace() {
   if (!workspace) {
@@ -619,11 +736,7 @@ function renderWorkspace() {
     s.title,
     s.review
       ? `Pinned at ${s.review.head.slice(0, 10)} · Review at your own pace.`
-      : "A short explanation, the code behind it, and a few questions.",
-    "WORKSPACE / " +
-      (
-        state.repos.find((r) => r.id === s.repo)?.name || "REPOSITORY"
-      ).toUpperCase(),
+      : "",
   );
   if (!s.started_learning) {
     renderDepth();
@@ -639,7 +752,7 @@ function renderWorkspace() {
       modules.at(-1)?.id;
   const current = modules.find((m) => m.id === activeModule);
   document.querySelector("#session-nav").innerHTML =
-    `<div class="nav-label">THIS SESSION</div>${modules.map((m) => `<button class="${m.id === activeModule ? "active" : ""}" data-module="${escape(m.id)}"><small>${m.status === "ready" && m.questions.every((q) => s.answers[q.key]) ? "✓" : String((m.index || 0) + 1).padStart(2, "0")}</small>${escape(m.title)}${m.status === "preview" ? " · preparing" : ""}</button>`).join("")}`;
+    `<div class="nav-label">This session</div>${modules.map((m) => `<button class="${m.id === activeModule ? "active" : ""}" data-module="${escape(m.id)}"><small>${m.status === "ready" && m.questions.every((q) => s.answers[q.key]) ? "✓" : String((m.index || 0) + 1).padStart(2, "0")}</small>${escape(m.title)}${m.status === "preview" ? " · preparing" : ""}</button>`).join("")}`;
   document.querySelectorAll("[data-module]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -662,9 +775,9 @@ function renderWorkspace() {
       : "";
   let body = "";
   if (current?.status === "ready") {
-    body = `<div class="module-title"><h2>${escape(current.title)}</h2><span class="pill">ROUND ${current.round}</span></div><div class="module-summary">${markdown(current.summary)}</div><section class="lesson-section"><h3>Why it exists</h3>${markdown(current.why)}</section><section class="lesson-section"><h3>Follow the flow</h3><ol>${current.flow.map((x) => `<li>${inlineReferences(x)}</li>`).join("")}</ol></section>${renderDiagram(current.diagram)}<section class="lesson-section"><h3>The key code</h3>${markdown(current.key_code)}<div class="anchor-links">${current.anchors.map((a) => `<button data-anchor="${escape(a.id)}">${escape(a.path)} ↗</button>`).join("")}</div></section><section class="lesson-section"><h3>What to watch for</h3><ul>${current.pitfalls.map((x) => `<li>${inlineReferences(x)}</li>`).join("")}</ul></section><section class="quiz-section"><p class="eyebrow">MAKE A PREDICTION</p><h2>Check your working model.</h2><p><small>Answer once, then see feedback immediately. “I don’t know” is useful evidence.</small></p>${current.questions.map(renderQuestion).join("")}</section>${s.review ? (current.findings_unlocked ? `<section class="lesson-section"><p class="eyebrow">YOUR VIEW FIRST, THEN THE AGENT’S</p><h2>Proposed review findings</h2>${current.findings.map((f) => renderFinding(f, current)).join("") || "<p>No supported findings were proposed for this module. This is not a safety certification.</p>"}</section>` : '<div class="findings-lock">Review findings unlock after you answer this module’s questions.</div>') : ""}`;
+    body = `<div class="module-title"><h2>${escape(current.title)}</h2><span class="pill">ROUND ${current.round}</span></div><div class="module-summary">${markdown(current.summary)}</div><section class="lesson-section"><h3>Why it exists</h3>${markdown(current.why)}</section><section class="lesson-section"><h3>Follow the flow</h3><ol>${current.flow.map((x) => `<li>${inlineReferences(x)}</li>`).join("")}</ol></section>${renderDiagram(current.diagram)}<section class="lesson-section"><h3>The key code</h3>${markdown(current.key_code)}<div class="anchor-links">${current.anchors.map((a) => `<button data-anchor="${escape(a.id)}">${escape(a.path)} ↗</button>`).join("")}</div></section><section class="lesson-section"><h3>What to watch for</h3><ul>${current.pitfalls.map((x) => `<li>${inlineReferences(x)}</li>`).join("")}</ul></section><section class="quiz-section"><h2>Check your working model.</h2><p><small>Answer once, then see feedback immediately. “I don’t know” is useful evidence.</small></p>${current.questions.map(renderQuestion).join("")}</section>${s.review ? (current.findings_unlocked ? `<section class="lesson-section"><h2>Proposed review findings</h2>${current.findings.map((f) => renderFinding(f, current)).join("") || "<p>No supported findings were proposed for this module. This is not a safety certification.</p>"}</section>` : '<div class="findings-lock">Review findings unlock after you answer this module’s questions.</div>') : ""}`;
   } else if (current) {
-    body = `<div class="preview-card"><p class="eyebrow">A MODULE IS ON ITS WAY</p><h2>${escape(current.title)}</h2><p>${escape(current.summary)}</p><p class="quiet">The agent is validating its code anchors and questions. This module will open as soon as it is ready.</p></div>`;
+    body = `<div class="preview-card"><h2>${escape(current.title)}</h2><p>${escape(current.summary)}</p><p class="quiet">The agent is validating its code anchors and questions. This module will open as soon as it is ready.</p></div>`;
   } else {
     body =
       '<div class="preview-card"><h2>Finding the right starting point.</h2><p>The first module appears as soon as OpenCode writes and validates it. You do not have to wait for the whole round.</p></div>';
@@ -768,7 +881,7 @@ function renderCode() {
   if (!pane) return;
   if (!anchor) {
     pane.innerHTML =
-      '<div class="code-empty"><p class="eyebrow">KEEP THE SOURCE CLOSE</p><h3>The code behind the explanation.</h3><p>Choose a source reference to open a highlighted excerpt here. Click to pin it as you read.</p></div>';
+      '<div class="code-empty"><h3>Source</h3><p>Choose a source reference to open a highlighted excerpt here. Click to pin it as you read.</p></div>';
     return;
   }
   const uses = [];
@@ -850,7 +963,7 @@ async function previewComment(mid, fid) {
     const value = await api(
       `sessions/${s.repo}/${s.id}/finding/${mid}/${fid}/preview`,
     );
-    modal.innerHTML = `<p class="eyebrow">NOT POSTED YET</p><h2>Review the exact comment.</h2><div class="comment-code">${escape(value.path)} · line ${value.line}<br>Head ${escape(value.head.slice(0, 12))}</div><div class="comment-body">${escape(value.body)}</div><p><small>This posts a single comment to GitHub. It does not approve or merge the pull request.</small></p><div class="dialog-actions"><button class="secondary" data-close>Keep editing</button><button class="primary" id="post-comment" ${s.review.kind !== "pr" || value.postable === false ? "disabled" : ""}>Post exact comment to GitHub</button></div>${value.postable === false ? '<p class="quiet">This anchor is outside added diff lines, so GitHub inline posting is unavailable. You can copy and use the draft manually.</p>' : ""}`;
+    modal.innerHTML = `<h2>Review the exact comment.</h2><div class="comment-code">${escape(value.path)} · line ${value.line}<br>Head ${escape(value.head.slice(0, 12))}</div><div class="comment-body">${escape(value.body)}</div><p><small>This posts a single comment to GitHub. It does not approve or merge the pull request.</small></p><div class="dialog-actions"><button class="secondary" data-close>Keep editing</button><button class="primary" id="post-comment" ${s.review.kind !== "pr" || value.postable === false ? "disabled" : ""}>Post exact comment to GitHub</button></div>${value.postable === false ? '<p class="quiet">This anchor is outside added diff lines, so GitHub inline posting is unavailable. You can copy and use the draft manually.</p>' : ""}`;
     modal.showModal();
     modal.querySelector("[data-close]").onclick = () => modal.close();
     document.querySelector("#post-comment").onclick = async () => {
@@ -877,7 +990,7 @@ async function nextDialog() {
   try {
     const s = workspace,
       value = await api(`sessions/${s.repo}/${s.id}/next`);
-    modal.innerHTML = `<p class="eyebrow">FOLLOW THE EVIDENCE</p><h2>What would you like to understand next?</h2><p>Weakest areas first. These estimates include forgetting and changes in the code.</p><div class="next-options">${value.areas.map((a) => `<button data-next-area="${a.id}"><div>${escape(a.name)}<small>Focus a round on this area</small></div><span>${percent(a.mastery)}% →</span></button>`).join("")}${value.concepts
+    modal.innerHTML = `<h2>What would you like to understand next?</h2><p>Weakest areas first. These estimates include forgetting and changes in the code.</p><div class="next-options">${value.areas.map((a) => `<button data-next-area="${a.id}"><div>${escape(a.name)}<small>Focus a round on this area</small></div><span>${percent(a.mastery)}% →</span></button>`).join("")}${value.concepts
       .slice(0, 3)
       .map(
         (c) =>

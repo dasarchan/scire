@@ -49,6 +49,9 @@ def test_workspace_navigation_responsiveness_and_findings(workspace, tmp_path):
         async def start(self):
             pass
 
+        def queue_map(self, *args):
+            pass
+
         async def reviews(self, rid):
             return {"items": [], "branches": [], "error": None}
 
@@ -88,7 +91,7 @@ def test_workspace_navigation_responsiveness_and_findings(workspace, tmp_path):
             errors = []
             page.on("pageerror", lambda e: errors.append(str(e)))
             page.goto(base + "/?view=knowledge#browser-token")
-            page.get_by_role("heading", name="What you know, and what to revisit.").wait_for()
+            page.get_by_role("heading", name="Knowledge", exact=True).wait_for()
             page.locator(".knowledge-tree details").first.wait_for()
             assert page.evaluate("document.documentElement.scrollWidth") == 390
             page.locator(".knowledge-tree summary").first.click()
@@ -127,10 +130,15 @@ def test_setup_reflects_terminal_connections_without_path_fields(workspace, monk
     store, repo, root, m, module = workspace
     store.set_repos([])
     store.save_profile({"setup": False, "name": "", "role": "", "model": "test/model", "cheap_model": ""})
-    monkeypatch.setattr(operations, "available_models", lambda: ["test/model"])
+    monkeypatch.setattr(
+        operations, "available_models", lambda: ["test/model", "test/another-model", "other/fast"]
+    )
 
     class QuietService(Service):
         async def start(self):
+            pass
+
+        def queue_map(self, *args):
             pass
 
         async def reviews(self, rid):
@@ -166,7 +174,21 @@ def test_setup_reflects_terminal_connections_without_path_fields(workspace, monk
                 ),
             )
             page.goto(base + "/#setup-token")
-            page.get_by_role("heading", name="A small introduction").wait_for()
+            page.get_by_role("heading", name="About you").wait_for()
+            teaching_provider = page.get_by_label("Teaching model provider", exact=True)
+            teaching_model = page.get_by_label("Teaching model", exact=True)
+            teaching_provider.select_option("other")
+            teaching_model.select_option("other/fast")
+            page.get_by_label("Quick answers provider", exact=True).select_option("test")
+            page.get_by_label("Quick answers", exact=True).select_option("test/another-model")
+            assert page.locator("datalist").count() == 0
+            assert page.locator(".eyebrow").count() == 0
+            page.set_viewport_size({"width": 1440, "height": 1000})
+            page.wait_for_timeout(200)
+            page.screenshot(path="work/setup-refined-desktop.png", full_page=False, animations="disabled")
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.wait_for_timeout(200)
+            page.screenshot(path="work/setup-refined-mobile.png", full_page=False, animations="disabled")
             assert page.locator('[name="paths"]').count() == 0
             assert page.get_by_role("button", name="Create workspace →").is_disabled()
             page.get_by_label("Your name", exact=True).fill("Alex")
@@ -186,12 +208,32 @@ def test_setup_reflects_terminal_connections_without_path_fields(workspace, monk
             page.get_by_label("Build repository maps in the background").uncheck()
             assert page.evaluate("document.documentElement.scrollWidth") == 390
             page.get_by_role("button", name="Create workspace →").click()
-            page.get_by_role("heading", name="Keep the code in mind.").wait_for()
+            page.get_by_role("heading", name="Overview").wait_for()
             assert payload and "paths" not in payload[0]
             assert store.profile()["name"] == "Alex" and store.repos()[0]["id"] == repo["id"]
+            assert store.profile()["model"] == "other/fast"
+            assert store.profile()["cheap_model"] == "test/another-model"
             page.locator('[data-view="settings"]').click()
             page.get_by_role("heading", name="Connected repositories", exact=True).wait_for()
             assert page.locator('[name="paths"]').count() == 0 and not errors
+            page.get_by_label("Quick answers provider", exact=True).select_option("")
+            page.locator('.model-picker[data-name="model"] .model-manual-toggle').click()
+            page.get_by_label("Teaching model ID", exact=True).fill("private/custom-model")
+            page.get_by_role("button", name="Save settings", exact=True).click()
+            page.get_by_text("Settings saved", exact=True).wait_for()
+            assert store.profile()["model"] == "private/custom-model"
+            assert store.profile()["cheap_model"] == ""
+            # Catalog failure leaves saved models intact and allows retry.
+            page.route("**/api/models", lambda route: route.fulfill(status=503, json={"error": "offline"}))
+            page.goto(base + "/?view=settings")
+            page.get_by_role("button", name="Retry", exact=True).first.wait_for()
+            assert page.locator('input[name="model"]').input_value() == "private/custom-model"
+            page.unroute("**/api/models")
+            page.get_by_role("button", name="Retry", exact=True).first.click()
+            page.get_by_label("Teaching model provider", exact=True).select_option("test")
+            page.get_by_label("Teaching model", exact=True).select_option("test/model")
+            assert page.evaluate("document.documentElement.scrollWidth") == 390
+            assert not errors
             browser.close()
     finally:
         server.should_exit = True
@@ -212,6 +254,9 @@ def test_repo_dropdown_selection_search_and_keyboard(workspace, tmp_path):
 
     class QuietService(Service):
         async def start(self):
+            pass
+
+        def queue_map(self, *args):
             pass
 
         async def reviews(self, rid):
@@ -267,7 +312,7 @@ def test_repo_dropdown_selection_search_and_keyboard(workspace, tmp_path):
             assert page.locator("#repo-label").inner_text() == repo["name"]
             trigger.click()
             assert page.get_by_role("option", selected=True).get_attribute("data-repo") == repo["id"]
-            page.screenshot(path="work/repo-dropdown-desktop.png", full_page=True)
+            page.screenshot(path="work/repo-dropdown-desktop.png", full_page=False, animations="disabled")
             page.locator("main > h1").click()
             assert dropdown.is_hidden()
             page.set_viewport_size({"width": 390, "height": 844})
@@ -276,7 +321,7 @@ def test_repo_dropdown_selection_search_and_keyboard(workspace, tmp_path):
             assert box["x"] >= 12 and box["x"] + box["width"] <= 378
             assert box["y"] >= button["y"] + button["height"]
             assert page.evaluate("document.documentElement.scrollWidth") == 390
-            page.screenshot(path="work/repo-dropdown-mobile.png", full_page=True)
+            page.screenshot(path="work/repo-dropdown-mobile.png", full_page=False, animations="disabled")
             page.get_by_role("option", name="All repositories").click()
             assert page.locator("#repo-label").inner_text() == "All repositories"
             trigger.click()
