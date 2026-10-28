@@ -28,3 +28,9 @@ The suite now has 39 passing checks, including two running Chrome tests. Reposit
 A real home-folder scan found 76 repositories across 7,887 directories in 1.4 seconds. The interactive check also included the existing Flask connection outside the home folder: 77 repositories in 0.6 seconds on a warm scan. Depth-limited results are labelled and another folder can be searched through the terminal browser. No source contents were read for discovery, and no AI inference was started by the picker.
 
 The real Flask connection appeared read-only in Settings. Chrome verified that setup has no repository path field, waits for a terminal selection, and submits no paths. Desktop and phone-width checks passed.
+
+## Public distribution — v0.1.2 (2026-10-27)
+
+- 45 pytest checks passed on macOS, including both running Chrome app tests, installer bootstrap and reuse, corrupt-download rejection before mutation, wheel receipt updates, and managed OpenCode selection.
+- Installer tests use an isolated home (including spaces) and substitute only downloads/tool binaries; the actual `install.sh` runs under `/bin/sh`.
+- Ruff correctness/format checks and wheel/sdist builds passed. PyPI publishing remains explicitly manual until a PyPI account owner registers the Trusted Publisher.

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.2 — 2026-10-27
+
+- Make Scire public and add a one-command macOS/Linux installer with verified release downloads.
+- Bootstrap uv, Python and compatible OpenCode without sudo or replacing existing OpenCode installations.
+- Publish release assets and checksums automatically; prepare optional PyPI Trusted Publishing.
+- Support updates from wheel installations and make GitHub CLI optional in diagnostics.
+
 ## v0.1.1 — 2026-10-27
 
 - Discover local Git repositories during terminal setup and select connections with a searchable checklist.
