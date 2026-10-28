@@ -11,6 +11,7 @@ from pathlib import Path
 from .agent import AgentRunner
 from .git import default_ref, git, pinned_worktree, revision
 from .knowledge import Knowledge
+from .reading import reading_budget, reading_stats, validate_budget
 from .maps import validate_map, merge_map, public_map, concept_fingerprint
 from .models import Module, Preview, RoundManifest, Triage, validate_module
 from .paths import home, read_json, transaction, write_json
@@ -204,7 +205,8 @@ class Service:
     def context_skeleton(self, value):
         return {k: v[:1000] if isinstance(v, list) else v for k, v in value.items() if k != "fingerprints"}
 
-    async def new_session(self, rid, target="learn", focus=None, topic=None):
+    async def new_session(self, rid, target="learn", focus=None, topic=None, minutes=5, calibration=False):
+        reading_budget(minutes)
         repo = self.store.repo(rid)
         values = {}
         if target != "learn":
@@ -220,7 +222,9 @@ class Service:
             async with lock:
                 source, sha = await asyncio.to_thread(pinned_worktree, repo)
             values = {"source": str(source), "sha": sha}
-        s = self.store.new_session(rid, target, focus=focus, **values)
+        s = self.store.new_session(
+            rid, target, focus=focus, reading_minutes=minutes, calibration=bool(calibration), **values
+        )
         if topic:
             s["topics"].append({"question": topic, "concepts": [focus] if focus else [], "at": time.time()})
         self.store.save_session(s)
@@ -232,12 +236,19 @@ class Service:
             raise ValueError("Wait for the repository map, or retry its build first")
         return {k: v for k, v in value.items() if k != "events"}
 
-    def start_round(self, rid, sid, depths=None, focus=None, allow_incomplete=False):
+    def start_round(
+        self, rid, sid, depths=None, focus=None, allow_incomplete=False, minutes=None, calibration=None
+    ):
         key = "round:" + sid
         if key in self.jobs:
             raise ValueError("This session already has a round running")
         s = self.store.session(rid, sid)
         m = self.map_for(rid)
+        if minutes is not None:
+            reading_budget(minutes)
+            s["reading_minutes"] = minutes
+        if calibration is not None and not s["round"]:
+            s["calibration"] = bool(calibration)
         if depths is not None:
             known = {a["id"] for a in m["areas"]}
             if any(
@@ -325,15 +336,16 @@ class Service:
                 else "concept"
                 if focus
                 else "calibrate"
-                if round_no == 1
+                if round_no == 1 and s.get("calibration", True)
                 else "learn"
             )
             payload = {
                 "skeleton": self.context_skeleton(skeleton),
                 "map": m if s.get("review") else {**m, "concepts": public_map(self.store, rid)["concepts"]},
-                "learner": Knowledge(self.store, rid).states(
-                    {c["id"]: concept_fingerprint(source, c) for c in m["concepts"]}
+                "learner": Knowledge(self.store, rid).summary(
+                    m, {c["id"]: concept_fingerprint(source, c) for c in m["concepts"]}
                 ),
+                "reading_budget": reading_budget(s.get("reading_minutes", 5)),
                 "previous_modules": [old["id"] for old in s["modules"]],
                 "profile": {"role": profile.get("role", "")},
                 "depths": s["depths"],
@@ -342,7 +354,7 @@ class Service:
                 "topics": s["topics"],
                 "review": s.get("review"),
                 "previous_questions": [
-                    q
+                    {k: q[k] for k in ("key", "question", "concept")}
                     for old in s["modules"]
                     if old.get("status") == "ready"
                     for q in old.get("questions", [])
@@ -374,6 +386,17 @@ class Service:
                             }
                             if any(q["key"] in prior_keys for q in module["questions"]):
                                 raise ValueError("Question key was reused from an earlier module")
+                            validate_budget(
+                                [
+                                    old
+                                    for old in s["modules"]
+                                    if old.get("round") == round_no
+                                    and old.get("status") == "ready"
+                                    and old["id"] != mid
+                                ]
+                                + [module],
+                                reading_budget(s.get("reading_minutes", 5)),
+                            )
                             module.update(round=round_no, status="ready", index=preview["index"])
                             self.make_orders(s, module)
                             s["modules"] = [
@@ -435,6 +458,7 @@ class Service:
                     modules.append(module)
                 if set(published) - seen:
                     raise ValueError("Round dropped a published module")
+                validate_budget(modules, reading_budget(s.get("reading_minutes", 5)))
                 return manifest.model_dump()
 
             result = await self.runner.run(
@@ -500,6 +524,7 @@ class Service:
 
     def public_session(self, rid, sid):
         s = copy.deepcopy(self.store.session(rid, sid))
+        s["reading"] = reading_stats([m for m in s["modules"] if m.get("status") == "ready"])
         orders = read_json(self.store.session_dir(rid, sid) / "orders.json", {})
         for module in s["modules"]:
             if module.get("status") != "ready":
@@ -510,7 +535,7 @@ class Service:
                 q["options"] = [by_key[key] for key in orders.get(q["key"], list(by_key))]
                 q["options"].append({"key": "unknown", "text": "I don’t know yet"})
                 if q["key"] not in s["answers"]:
-                    for key in ("correct", "explanation", "misconception"):
+                    for key in ("correct", "explanation", "misconception", "likelihoods"):
                         q.pop(key, None)
             if not all_answered:
                 module["findings"] = []
@@ -546,7 +571,13 @@ class Service:
                 concept_fingerprint(Path(s["source"]), concept) if concept else anchor["fingerprint"]
             )
             before, after = Knowledge(self.store, rid).record(
-                q["concept"], f"{sid}:{key}", choice, correct, q["misconception"], fingerprint
+                q["concept"],
+                f"{sid}:{key}",
+                choice,
+                correct,
+                q["misconception"],
+                fingerprint,
+                q.get("likelihoods"),
             )
             result = {
                 "choice": choice,

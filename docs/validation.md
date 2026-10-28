@@ -64,3 +64,8 @@ The real Flask connection appeared read-only in Settings. Chrome verified that s
 - 57 checks passed, including four running Chrome tests. New checks cover project-relative/absolute output permissions, source/config denial, assistant-only partial text, hidden reasoning/tool bodies, bounded transcript updates, persisted completion timing and actionable missing-manifest errors.
 - Real OpenCode calibration on the user’s pinned Flask source completed in 37.479 seconds, with two validated modules and no fix passes. Provider-reported cost was $0 (subscription accounting; not an independent estimate). The run used isolated Scire state and the existing provider login.
 - Chrome checked live in-place text updates, safe HTML escaping, tool titles, completion/Start learning, workspace navigation and 390px document bounds. Screenshots: work/mapping-desktop.png and work/mapping-mobile.png.
+
+## Replayable knowledge and reading budgets
+
+- 63 tests passed, including Chrome checks. New tests cover response likelihood ratios, cache deletion/tampering, replay deduplication, forgetting, code drift, legacy evidence import, area rollups, bounded prompt summaries and CLI reopening.
+- A real two-minute Flask calibration produced one validated section and two questions in 39.202 seconds, after one successful shortening pass; subscription cost reported $0. Budget validation runs before streaming publication so oversized sections remain repairable.

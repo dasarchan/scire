@@ -86,6 +86,8 @@ class Store:
             "cost": 0.0,
             "seconds": 0.0,
             "started_learning": False,
+            "reading_minutes": 5,
+            "calibration": False,
             **values,
         }
         self.save_session(s)

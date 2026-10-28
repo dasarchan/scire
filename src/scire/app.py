@@ -180,7 +180,13 @@ def create_app(token=None, service=None):
     @app.post("/api/sessions")
     async def new_session(request: Request):
         value = await request.json()
-        s = await service.new_session(value["repo"], value.get("target", "learn"), value.get("focus"))
+        s = await service.new_session(
+            value["repo"],
+            value.get("target", "learn"),
+            value.get("focus"),
+            minutes=value.get("minutes", 5),
+            calibration=value.get("calibration", False),
+        )
         return {"id": s["id"], "repo": s["repo"], "url": f"/w/{s['repo']}/{s['id']}/"}
 
     @app.get("/api/sessions/{rid}/{sid}")
@@ -190,7 +196,14 @@ def create_app(token=None, service=None):
     @app.post("/api/sessions/{rid}/{sid}/start")
     async def start_round(rid: str, sid: str, request: Request):
         value = await request.json()
-        service.start_round(rid, sid, value.get("depths"), value.get("focus"))
+        service.start_round(
+            rid,
+            sid,
+            value.get("depths"),
+            value.get("focus"),
+            minutes=value.get("minutes"),
+            calibration=value.get("calibration"),
+        )
         return {"ok": True}
 
     @app.post("/api/sessions/{rid}/{sid}/answer")
