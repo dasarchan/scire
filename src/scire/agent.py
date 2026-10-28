@@ -11,7 +11,9 @@ from typing import Callable
 import httpx
 import json5
 from .paths import write_json
+from .git import git
 from .skeleton import source_files
+from .progress import AgentOutput
 
 PROMPTS = Path(__file__).parent / "prompts"
 
@@ -67,11 +69,32 @@ def snapshot(source: Path, dest: Path) -> tuple[list[str], int]:
             continue
         target = dest / name
         target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink():
+            raise ValueError("Job snapshot contains an unexpected symlink")
+        if target.exists():
+            target.chmod(0o600)
         target.write_bytes(data)
         target.chmod(0o400)
         total += len(data)
         files.append(name)
     return files, omitted
+
+
+def job_permissions(job_dir: Path) -> dict:
+    """OpenCode checks relative paths; keep both forms scoped to this job."""
+
+    def scoped(name):
+        return {str((job_dir / name).resolve()) + "/**": "allow", name + "/**": "allow"}
+
+    return {
+        "*": "deny",
+        "read": {"*": "deny", **scoped("source"), **scoped("output")},
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "edit": {"*": "deny", **scoped("output")},
+        "external_directory": "deny",
+    }
 
 
 class AgentRunner:
@@ -113,6 +136,7 @@ class AgentRunner:
         stream: Callable | None = None,
         timeout=300,
         budget=3.0,
+        output_event: Callable | None = None,
     ) -> dict:
         if not model or "/" not in model:
             raise ValueError("Choose an OpenCode provider/model in setup before starting AI work")
@@ -123,20 +147,11 @@ class AgentRunner:
         files, omitted = await asyncio.to_thread(snapshot, source, filtered)
         config_dir = job_dir / "config"
         config_dir.mkdir(exist_ok=True)
+        # OpenCode checks file permissions relative to its Git worktree. Give each
+        # job its own root; never inherit a Git ancestor or alter the learned repo.
+        await asyncio.to_thread(git, job_dir, "-c", "init.templateDir=", "init", "--quiet")
 
-        def scoped(path):
-            path = str(path.resolve()) + "/**"
-            return {path: "allow", path.lstrip("/"): "allow"}
-
-        permission = {
-            "*": "deny",
-            "read": {"*": "deny", **scoped(filtered), **scoped(output)},
-            "glob": "allow",
-            "grep": "allow",
-            "list": "allow",
-            "edit": {"*": "deny", **scoped(output)},
-            "external_directory": "deny",
-        }
+        permission = job_permissions(job_dir)
         config = {
             "provider": provider_config(),
             "model": model,
@@ -268,6 +283,7 @@ class AgentRunner:
                     seen = set()
                     tools = set()
                     roles = {}
+                    relay = AgentOutput(output_event)
 
                     async def listen():
                         nonlocal cost, tokens
@@ -282,6 +298,7 @@ class AgentRunner:
                                     p = e.get("properties", {})
                                     if p.get("sessionID") not in (None, sid):
                                         continue
+                                    relay.accept(e)
                                     info = p.get("info", {})
                                     if e["type"] == "message.updated":
                                         roles[info.get("id")] = info.get("role")
@@ -309,7 +326,7 @@ class AgentRunner:
                                     ):
                                         text = part.get("text", "").strip()
                                         if text and not text.startswith(("{", "[", "```")):
-                                            progress(text[:350])
+                                            progress(text)
                         except (httpx.HTTPError, asyncio.CancelledError, ValueError):
                             pass
 

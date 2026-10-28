@@ -1,4 +1,4 @@
-Output is JSON files written using your file tools, not JSON embedded in a final chat reply. Paths are relative to output_root.
+Output is JSON files written using your file tools, not JSON embedded in a final chat reply. Paths in manifests are relative to output_root. For file tools, target the actual output_root path: for apply_patch use output/<relative JSON path> from the job working directory (or the absolute output_root path); for write use an absolute output_root path.
 
 MAP: map.json = {"areas":[{"id":"requests","name":"Request lifecycle","parent":null,"importance":1,"summary":"...","paths":["src/app/*"]}],"concepts":[{"id":"validation","name":"Input validation","parent":"requests","importance":0.9,"aliases":[],"related":["dispatch"],"anchors":[ANCHOR]}],"omitted":[{"path":"tests/*","reason":"..."}]}.
 All areas form a tree/forest without cycles. All concepts name a parent area and form a connected graph through related. Account for at least 90% of readable files using area paths or explicit omitted patterns. Keep semantic areas distinct and stable; do not use arbitrary folders as the only explanation.

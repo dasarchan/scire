@@ -1718,3 +1718,174 @@ body[data-loading] .top-actions {
   height: 18px;
   display: block;
 }
+
+/* Mapping gets a focused workspace, with a stable, scrollable agent transcript. */
+body.mapping-active aside {
+  display: none;
+}
+body.mapping-active main {
+  margin-left: 0;
+  max-width: 1160px;
+  width: 100%;
+  padding: 28px 40px;
+}
+body.mapping-active main > h1,
+body.mapping-active main > .subtitle {
+  display: none;
+}
+.mapping-view {
+  width: 100%;
+  min-width: 0;
+}
+.mapping-toolbar,
+.mapping-heading,
+.mapping-feed-header,
+.mapping-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.mapping-toolbar {
+  margin-bottom: 40px;
+}
+.mapping-toolbar select {
+  width: auto;
+  max-width: 55%;
+  margin: 0;
+}
+.mapping-heading {
+  margin-bottom: 28px;
+  align-items: flex-start;
+}
+.mapping-heading h2 {
+  font-size: clamp(26px, 4vw, 38px);
+  letter-spacing: -0.035em;
+  margin: 12px 0;
+}
+.mapping-heading p {
+  color: var(--muted);
+  max-width: 650px;
+  line-height: 1.6;
+  margin: 0;
+}
+.mapping-state {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  color: var(--accent, #8bb3ff);
+  font-size: 13px;
+}
+.mapping-time {
+  text-align: right;
+  padding-top: 26px;
+  flex-shrink: 0;
+}
+.mapping-time b {
+  display: block;
+  font-size: 26px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.mapping-time span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.mapping-feed-header {
+  font-size: 12px;
+  padding: 15px 18px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  color: var(--muted);
+  background: var(--panel);
+}
+.mapping-feed {
+  height: min(54vh, 620px);
+  min-height: 230px;
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 0 0 12px 12px;
+  background: #101217;
+  scrollbar-gutter: stable;
+  overflow-wrap: anywhere;
+}
+.mapping-entry {
+  white-space: pre-wrap;
+}
+.mapping-text {
+  font-size: 14px;
+  line-height: 1.8;
+  max-width: 88ch;
+  margin-bottom: 22px;
+  color: var(--text);
+}
+.mapping-tool {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted);
+  margin: 8px 0;
+}
+.mapping-wait {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 22px;
+}
+.mapping-footer {
+  padding: 18px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.mapping-footer > div {
+  display: flex;
+  gap: 10px;
+}
+.mapping-view [hidden] {
+  display: none !important;
+}
+@media (max-width: 650px) {
+  body.mapping-active main {
+    padding: 22px 18px;
+  }
+  .mapping-toolbar {
+    margin-bottom: 28px;
+  }
+  .mapping-heading {
+    gap: 12px;
+  }
+  .mapping-time b {
+    font-size: 21px;
+  }
+  .mapping-feed {
+    padding: 16px;
+    height: 48vh;
+  }
+  .mapping-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .mapping-feed-header {
+    padding: 12px;
+    gap: 8px;
+    font-size: 11px;
+  }
+}
+
+body.mapping-active .layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+body.mapping-active main {
+  margin-inline: auto;
+}
+body.mapping-active aside#nav {
+  display: none;
+}
+
+body.mapping-active #nav-toggle {
+  visibility: hidden;
+}
+.mapping-state .pulse {
+  background: #8bb3ff;
+}

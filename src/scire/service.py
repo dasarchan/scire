@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .progress import MapActivity
 import asyncio
 import copy
 import hashlib
@@ -126,6 +127,10 @@ class Service:
                         "error": None,
                         "activity": "Preparing the default-branch snapshot",
                         "attempt_sha": sha,
+                        "started_at": time.time(),
+                        "finished_at": None,
+                        "events": [],
+                        "last_activity": time.time(),
                     },
                 )
                 lock = self.repo_locks.setdefault(rid, asyncio.Lock())
@@ -136,24 +141,39 @@ class Service:
                 profile = self.store.profile()
                 job = self.store.repo_dir(rid) / "jobs" / uuid.uuid4().hex
 
-                def progress(message):
+                def save_activity(events, last_activity):
                     current_map = read_json(path, {})
-                    write_json(path, {**current_map, "activity": message, "last_activity": time.time()})
+                    write_json(path, {**current_map, "events": events, "last_activity": last_activity})
+
+                activity = MapActivity(save_activity)
+
+                def progress(message):
+                    activity.status(message)
 
                 result = await self.runner.run(
                     "map",
                     source,
-                    {"skeleton": self.context_skeleton(skeleton), "existing_map": old},
+                    {
+                        "skeleton": self.context_skeleton(skeleton),
+                        "existing_map": {k: old.get(k, []) for k in ("areas", "concepts")},
+                    },
                     job,
                     profile["model"],
                     lambda output: validate_map(source, read_json(output / "map.json", {}), skeleton),
                     progress,
                     timeout=330,
                     budget=3,
+                    output_event=activity.emit,
                 )
-                value = merge_map(read_json(path, old), result["value"])
+                activity.flush()
+                transcript = read_json(path, old)
+                value = merge_map(transcript, result["value"])
                 value.update(
                     status="ready",
+                    events=transcript.get("events", []),
+                    started_at=transcript.get("started_at"),
+                    last_activity=transcript.get("last_activity"),
+                    finished_at=time.time(),
                     source=str(source),
                     sha=sha,
                     fingerprint=skeleton["fingerprint"],
@@ -163,9 +183,13 @@ class Service:
                 write_json(path, value)
                 self.store.event(rid, "map_built", {"sha": sha, "metrics": result["metrics"]})
         except asyncio.CancelledError:
+            if "activity" in locals():
+                activity.flush()
             write_json(path, {**read_json(path, old), "status": "interrupted"})
             raise
         except Exception as exc:
+            if "activity" in locals():
+                activity.flush()
             write_json(
                 path,
                 {
@@ -206,7 +230,7 @@ class Service:
         value = read_json(self.store.repo_dir(rid) / "map.json", {})
         if not value.get("areas") or not value.get("concepts"):
             raise ValueError("Wait for the repository map, or retry its build first")
-        return value
+        return {k: v for k, v in value.items() if k != "events"}
 
     def start_round(self, rid, sid, depths=None, focus=None, allow_incomplete=False):
         key = "round:" + sid
@@ -227,7 +251,13 @@ class Service:
             s["depths"] = {a["id"]: "standard" for a in m["areas"]}
         if s["round"] and s["status"] == "ready" and not allow_incomplete and not self.round_complete(s):
             raise ValueError("Answer this round’s questions before continuing")
-        s["round"] += 1
+        retry_empty = (
+            s["round"] > 0
+            and s["status"] in {"error", "interrupted", "cancelled"}
+            and not any(module.get("round") == s["round"] for module in s["modules"])
+        )
+        if not retry_empty:
+            s["round"] += 1
         s["status"] = "queued"
         s["error"] = None
         s["started_learning"] = True
@@ -358,7 +388,12 @@ class Service:
                         continue
 
             def validate(output):
-                manifest = RoundManifest.model_validate(read_json(output / "round.json", {}))
+                if not (output / "round.json").is_file():
+                    raise ValueError(
+                        "OpenCode did not create output/round.json. Use the available apply_patch or write tool "
+                        "to create the round manifest and module JSON files under output_root."
+                    )
+                manifest = RoundManifest.model_validate(read_json(output / "round.json"))
                 modules = []
                 seen = set()
                 all_questions = set()
