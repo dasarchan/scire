@@ -142,3 +142,42 @@ def test_map_merge_preserves_alias_identity_and_pending_concepts(workspace):
     invalid["concepts"][0]["related"] = ["absent"]
     with pytest.raises(ValueError, match="relationship"):
         validate_map(root, invalid, {"units": [{"path": "core.py"}]})
+
+
+async def test_home_topic_waits_for_depth_and_session_topic_adds_a_round(workspace, monkeypatch):
+    from scire import service as module
+
+    store, repo, root, m, lesson = workspace
+    monkeypatch.setattr(module, "pinned_worktree", lambda *args: (root, "a" * 40))
+
+    class TriageRunner:
+        async def close(self):
+            pass
+
+        async def run(self, kind, source, payload, folder, model, validate, *args, **kwargs):
+            if kind != "triage":
+                await asyncio.Future()
+            output = folder / "output"
+            output.mkdir(parents=True)
+            write_json(
+                output / "triage.json",
+                {"route": "focused", "concepts": ["dispatch"], "answer": "", "refs": lesson["anchors"]},
+            )
+            return {"value": validate(output), "metrics": {"cost": 0.001, "seconds": 0.1}}
+
+    service = Service(TriageRunner())
+    result = await service.ask(repo["id"], "Explain the dispatch boundary")
+    session = store.session(repo["id"], result["session"])
+    assert (
+        session["round"] == 0 and not session["started_learning"] and session["pending_focus"] == "dispatch"
+    )
+    assert session["topics"][0]["question"] == "Explain the dispatch boundary"
+    session["started_learning"] = True
+    session["round"] = 1
+    session["status"] = "ready"
+    store.save_session(session)
+    await service.ask(repo["id"], "How does its result reach the caller?", session["id"])
+    assert store.session(repo["id"], session["id"])["round"] == 2
+    with pytest.raises(ValueError, match="Wait for this round"):
+        await service.ask(repo["id"], "Another question", session["id"])
+    await service.close()

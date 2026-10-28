@@ -160,6 +160,15 @@ def create_app(token=None, service=None):
         service.queue_map(rid, True)
         return {"ok": True}
 
+    @app.post("/api/digest")
+    async def digest():
+        service.spawn("digest", service.digest())
+        return {"ok": True}
+
+    @app.get("/api/digest")
+    async def digest_status():
+        return {"running": "digest" in service.jobs, "value": read_json(home() / "digest.json", {})}
+
     @app.get("/api/reviews/{rid}")
     async def review_list(rid: str):
         return await service.reviews(rid)
@@ -187,9 +196,12 @@ def create_app(token=None, service=None):
 
     @app.post("/api/sessions/{rid}/{sid}/cancel")
     async def cancel(rid: str, sid: str):
+        s = store.session(rid, sid)
         task = service.jobs.get("round:" + sid)
         if task:
             task.cancel()
+            s["status"] = "cancelled"
+            store.save_session(s)
         return {"ok": True}
 
     @app.get("/api/sessions/{rid}/{sid}/next")
@@ -199,6 +211,13 @@ def create_app(token=None, service=None):
     @app.get("/api/sessions/{rid}/{sid}/head")
     async def check_head(rid: str, sid: str):
         return await service.check_head(rid, sid)
+
+    @app.get("/api/sessions/{rid}/{sid}/topics/{index}/source/{ref}")
+    async def topic_source(rid: str, sid: str, index: int, ref: int):
+        s = store.session(rid, sid)
+        if index < 0 or index >= len(s["topics"]) or ref < 0 or ref >= len(s["topics"][index]["refs"]):
+            raise ValueError("Unknown topic anchor")
+        return resolve_anchor(Path(s["source"]), s["topics"][index]["refs"][ref])
 
     @app.get("/api/sessions/{rid}/{sid}/source/{mid}/{aid}")
     async def source(rid: str, sid: str, mid: str, aid: str):

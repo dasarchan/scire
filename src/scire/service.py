@@ -12,7 +12,7 @@ from .git import default_ref, git, pinned_worktree, revision
 from .knowledge import Knowledge
 from .maps import validate_map, merge_map, public_map, concept_fingerprint
 from .models import Module, Preview, RoundManifest, Triage, validate_module
-from .paths import read_json, transaction, write_json
+from .paths import home, read_json, transaction, write_json
 from .review import resolve_review, waiting_reviews, head_moved, post_comment, changed_line
 from .skeleton import build_skeleton
 from .source import resolve_anchor
@@ -25,6 +25,7 @@ class Service:
         self.runner = runner or AgentRunner()
         self.jobs = {}
         self.map_slots = asyncio.Semaphore(2)
+        self.round_slots = asyncio.Semaphore(2)
         self.repo_locks = {}
         self.review_cache = {}
         self.maintenance = None
@@ -40,6 +41,10 @@ class Service:
         self.maintenance = asyncio.create_task(self.maintain())
 
     async def close(self):
+        for s in self.store.sessions():
+            if s["status"] in {"queued", "working"} and "round:" + s["id"] in self.jobs:
+                s["status"] = "cancelled"
+                self.store.save_session(s)
         if self.maintenance:
             self.maintenance.cancel()
         for task in list(self.jobs.values()):
@@ -256,6 +261,16 @@ class Service:
         write_json(path, orders)
 
     async def generate(self, s, focus=None):
+        try:
+            async with self.round_slots:
+                await self.generate_now(s, focus)
+        except asyncio.CancelledError:
+            latest = self.store.session(s["repo"], s["id"])
+            latest["status"] = "cancelled"
+            self.store.save_session(latest)
+            raise
+
+    async def generate_now(self, s, focus=None):
         rid = s["repo"]
         m = self.map_for(rid)
         source = Path(s["source"])
@@ -577,7 +592,9 @@ class Service:
         }
         if s is None:
             s = await self.new_session(rid, topic=question)
+            s["title"] = question[:100]
         else:
+            s = self.store.session(rid, sid)
             s["topics"].append(topic)
         if not any(t.get("question") == question and t.get("route") for t in s["topics"]):
             s["topics"] = [t for t in s["topics"] if t.get("question") != question] + [topic]
@@ -680,6 +697,17 @@ class Service:
         url = await asyncio.to_thread(
             post_comment, self.store.repo(rid), s["review"], value["path"], value["line"], value["body"]
         )
+        s = self.store.session(rid, sid)
         s.setdefault("posted", {})[fid] = url
         self.store.save_session(s)
         return {"url": url}
+
+    async def digest(self):
+        from .operations import build_digest
+
+        try:
+            await build_digest(self)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            write_json(home() / "digest.json", {"error": str(exc)})

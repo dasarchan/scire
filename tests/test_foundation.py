@@ -69,3 +69,8 @@ def test_bkt_guessing_forgetting_and_code_drift():
     assert learned["mastery"] > 0.9
     assert current(learned, now=now + 90 * 86400)["mastery"] < learned["mastery"]
     assert current(learned, "b", now)["mastery"] < learned["mastery"]
+
+
+def test_unknown_answers_record_a_gap_without_inventing_a_misconception():
+    state = observe(None, "unknown", False, misconception="Believes X causes Y")
+    assert state["misconceptions"] == [] and state["observations"][0]["unknown"]

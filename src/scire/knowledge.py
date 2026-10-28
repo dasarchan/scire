@@ -58,7 +58,7 @@ def observe(
     result["observations"] = (
         result.get("observations", []) + [{"at": now, "correct": correct, "unknown": answer == "unknown"}]
     )[-100:]
-    if not correct and misconception:
+    if not correct and answer != "unknown" and misconception:
         result["misconceptions"] = (result["misconceptions"] + [misconception])[-8:]
     return result
 

@@ -81,11 +81,13 @@ def waiting_reviews(repo: dict) -> list[dict]:
         gh(["pr", "list", "--json", "number,title,updatedAt,url,headRefOid", "--limit", "30"], root)
     )
     ids = {p["number"] for p in waiting}
-    return [
-        {**p, "waiting": p["number"] in ids}
-        for p in waiting + recent
-        if p["number"] in ids or not any(w["number"] == p["number"] for w in waiting)
-    ]
+    seen = set()
+    items = []
+    for p in waiting + recent:
+        if p["number"] not in seen:
+            items.append({**p, "waiting": p["number"] in ids})
+            seen.add(p["number"])
+    return items
 
 
 def head_moved(repo: dict, review: dict) -> bool:
@@ -94,7 +96,7 @@ def head_moved(repo: dict, review: dict) -> bool:
             gh(["pr", "view", str(review["number"]), "--json", "headRefOid"], Path(repo["path"]))
         )
         return info["headRefOid"] != review["head"]
-    target = review["title"].split("..")[-1]
+    target = re.split(r"\.{2,3}", review["title"])[-1]
     return revision(Path(repo["path"]), target) != review["head"]
 
 

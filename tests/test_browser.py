@@ -49,6 +49,20 @@ def test_workspace_navigation_responsiveness_and_findings(workspace, tmp_path):
         async def start(self):
             pass
 
+        async def reviews(self, rid):
+            return {"items": [], "branches": [], "error": None}
+
+        async def ask(self, rid, question, sid=None):
+            topic = {
+                "question": question,
+                "concepts": ["dispatch"],
+                "route": "quick",
+                "answer": "It adds one to the supplied number.",
+                "refs": module["anchors"],
+            }
+            session = store.new_session(rid, source=str(root), topics=[topic])
+            return {"session": session["id"], "topic": topic}
+
     service = QuietService()
     service.make_orders(s, validated)
     app = create_app("browser-token", service)
@@ -89,6 +103,14 @@ def test_workspace_navigation_responsiveness_and_findings(workspace, tmp_path):
             page.get_by_role("button", name="Preview exact comment →").click()
             page.get_by_role("heading", name="Review the exact comment.").wait_for()
             assert page.get_by_role("button", name="Post exact comment to GitHub").is_disabled()
+            page.goto(base + "/")
+            page.get_by_role("textbox", name="Ask about the codebase").fill("What does dispatch do?")
+            page.get_by_role("button", name="Explore question →").click()
+            page.get_by_role("heading", name="What does dispatch do?").wait_for()
+            assert page.url == base + "/"
+            page.get_by_role("button", name="core.py ↗").click()
+            page.locator(".source-preview").wait_for()
+            assert "return value + 1" in page.locator(".source-preview").inner_text()
             assert not errors
             browser.close()
     finally:
