@@ -38,14 +38,33 @@ def connect(model=None):
 
 
 def select_model(model=None):
-    models = available_models()
-    providers = sorted({m.split("/")[0] for m in models})
-    print("Available providers: " + ", ".join(providers))
-    chosen = model or input("Model (provider/model, or provider to list its models): ").strip()
-    while chosen in providers:
-        print("\n".join(m for m in models if m.startswith(chosen + "/")))
-        chosen = input("Model (provider/model): ").strip()
-    if not chosen or "/" not in chosen:
+    chosen = model
+    if not chosen:
+        import questionary
+
+        models = available_models()
+        providers = sorted({m.split("/")[0] for m in models})
+        if not providers:
+            raise ValueError("No OpenCode models found. Connect a provider with scire setup --connect.")
+        provider = questionary.autocomplete(
+            "Provider",
+            choices=providers,
+            match_middle=True,
+            validate=lambda value: value in providers or "Choose a listed provider",
+        ).ask()
+        if provider is None:
+            raise KeyboardInterrupt
+        names = [m.split("/", 1)[1] for m in models if m.startswith(provider + "/")]
+        name = questionary.autocomplete(
+            "Model",
+            choices=names,
+            match_middle=True,
+            validate=lambda value: value in names or "Choose a listed model",
+        ).ask()
+        if name is None:
+            raise KeyboardInterrupt
+        chosen = provider + "/" + name
+    if not re.fullmatch(r"[\w.-]+/[^\s]+", chosen):
         raise ValueError("Choose a model as provider/model")
     store = Store()
     profile = store.profile()

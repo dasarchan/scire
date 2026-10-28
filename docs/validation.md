@@ -44,3 +44,9 @@ The real Flask connection appeared read-only in Settings. Chrome verified that s
 
 - 48 tests passed, including three running Chrome app tests. The dropdown test covers search/no results, same-name repo paths, keyboard selection, Escape/focus restoration, reload persistence, outside click, settings navigation and viewport bounds at 390px.
 - Inspected desktop and mobile screenshots (`work/repo-dropdown-desktop.png`, `work/repo-dropdown-mobile.png`). No page-blocking dialog or page overflow. Ruff checks, formatting, JavaScript syntax and package builds passed.
+
+## UI and model selection — v0.1.5 (2026-10-28)
+
+- 49 checks passed, including three running Chrome app tests. Browser coverage verifies provider/model selection, custom model IDs, saved values, clearing the quick-answer override, API error/retry, and terminal connection sync without overwriting edited fields.
+- Inspected setup screenshots at 1440px and 390px. Removed ornamental captions and the browser datalist; controls now use responsive native selects. Viewport screenshots avoid Chrome full-page capture resizing during responsive interaction checks.
+- Terminal model selection uses searchable provider and model lists, covered with native prompt response tests. Ruff, JavaScript syntax and package builds pass.

@@ -252,3 +252,28 @@ def test_managed_opencode_preserves_explicit_override(tmp_path, monkeypatch):
     other.chmod(0o755)
     monkeypatch.setenv("SCIRE_OPENCODE", str(other))
     assert agent.opencode_binary() == str(other)
+
+
+def test_terminal_models_are_chosen_from_searchable_provider_and_model_lists(tmp_path, monkeypatch):
+    import questionary
+    from scire import operations
+
+    monkeypatch.setenv("SCIRE_HOME", str(tmp_path))
+    monkeypatch.setattr(
+        operations, "available_models", lambda: ["openai/alpha", "openai/beta", "custom/fast"]
+    )
+    choices = []
+    answers = iter(["openai", "beta"])
+
+    class Question:
+        def ask(self):
+            return next(answers)
+
+    def autocomplete(label, **kwargs):
+        choices.append((label, kwargs["choices"]))
+        return Question()
+
+    monkeypatch.setattr(questionary, "autocomplete", autocomplete)
+    operations.select_model()
+    assert choices == [("Provider", ["custom", "openai"]), ("Model", ["alpha", "beta"])]
+    assert Store().profile()["model"] == "openai/beta"

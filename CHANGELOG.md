@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.5 — 2026-10-28
+
+- Simplify typography, remove decorative captions and slogans, and organize setup/settings into clear form sections.
+- Replace browser model text fields and datalists with provider/model selects, custom-ID entry, and catalog loading/error/retry states.
+- Preserve model selections across settings edits and let quick answers fall back to the teaching model.
+- Replace terminal model dumps with searchable provider and model choosers.
+
 ## v0.1.4 — 2026-10-27
 
 - Replace the top-bar repository modal with an anchored dropdown, searchable repo list, selected checkmark and compact paths.
