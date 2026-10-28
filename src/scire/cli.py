@@ -65,6 +65,7 @@ def serve(no_open=False):
                 break
     if state and state["build"] == active_build:
         lock.close()
+        api(state, "repos/sync", {})
         url = f"http://127.0.0.1:{state['port']}/#{state['token']}"
         if not no_open:
             webbrowser.open(url)
@@ -142,7 +143,11 @@ def choose_repo(path=None):
         root = git(cwd, "rev-parse", "--show-toplevel").strip()
         return store.add_repo(root)
     except ValueError:
-        raise ValueError("Choose a repository with --repo /path/to/repo")
+        if store.repos() and sys.stdin.isatty():
+            from .discovery import choose_connected_repo
+
+            return choose_connected_repo(store.repos())
+        raise ValueError("Run scire setup to choose repositories. For scripts, pass --repo explicitly.")
 
 
 def show(state, path="/", no_open=False):
@@ -237,6 +242,12 @@ def main(argv=None):
             print("Stopping Scire and its agents.")
             return
         if args.command in {"setup", "init"}:
+            if not args.repos:
+                if not sys.stdin.isatty():
+                    raise ValueError("Run scire setup in an interactive terminal to choose repositories.")
+                from .discovery import connect_repositories
+
+                connect_repositories()
             for path in args.repos:
                 Store().add_repo(path)
             if args.connect:
@@ -324,6 +335,10 @@ def main(argv=None):
                 print("\n" + item["repo"] + "\n" + item.get("notes", ""))
             print("\nSaved: " + result.get("path", ""))
             return
+        if sys.stdin.isatty() and not Store().profile().get("setup"):
+            from .discovery import connect_repositories
+
+            connect_repositories()
         if not Store().profile().get("model") and sys.stdin.isatty():
             print("Welcome to Scire. Inference runs through your OpenCode provider login.")
             if input("Connect a provider now? [y/N] ").strip().lower() in {"y", "yes"}:
@@ -334,5 +349,5 @@ def main(argv=None):
     except (ValueError, OSError, httpx.HTTPError, subprocess.SubprocessError) as exc:
         print("Scire: " + str(exc), file=sys.stderr)
         raise SystemExit(1)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         print("\nStopped.", file=sys.stderr)

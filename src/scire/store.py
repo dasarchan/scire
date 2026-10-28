@@ -28,6 +28,23 @@ class Store:
         self.repo_dir(repo["id"]).mkdir(parents=True, exist_ok=True)
         return self.repo(repo["id"])
 
+    def set_repos(self, paths) -> list[dict]:
+        """Change connections while retaining every repository's learner history."""
+        roots = sorted({Path(path).expanduser().resolve(strict=True) for path in paths})
+        if any(not root.is_dir() for root in roots):
+            raise ValueError("Choose repository directories")
+        with transaction():
+            previous = {r["path"]: r for r in self.repos()}
+            repos = [
+                previous.get(str(root))
+                or {"id": repo_id(root), "path": str(root), "name": root.name, "added_at": time.time()}
+                for root in roots
+            ]
+            write_json(home() / "repos.json", repos)
+        for repo in repos:
+            self.repo_dir(repo["id"]).mkdir(parents=True, exist_ok=True)
+        return repos
+
     def repo_dir(self, rid: str) -> Path:
         if not rid.isalnum():
             raise ValueError("Invalid repository ID")

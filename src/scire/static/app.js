@@ -164,34 +164,79 @@ function autosize() {
     grow();
   });
 }
+function repositoryConnections() {
+  return `<section class="repo-connections" id="repo-connections">${repositoryConnectionsMarkup()}</section>`;
+}
+function repositoryConnectionsMarkup() {
+  return `<div class="repo-setup-heading"><h3>Connected repositories</h3><button type="button" class="secondary" id="manage-repos">Choose in terminal ↗</button></div>${state.repos.length ? state.repos.map((r) => `<div class="repo-connection"><span class="repo-check">✓</span><div><b>${escape(r.name)}</b><small>${escape(r.path)}</small></div></div>`).join("") : "<p>Run <code>scire setup</code> in a terminal. Scire finds Git repositories on your computer and lets you choose from a searchable list.</p>"}<p class="repo-hint">${state.repos.length ? "Your selection is managed in terminal setup. Learning history is kept when you disconnect a repository." : "Connect at least one repository to continue."}</p>`;
+}
+function bindRepositoryConnections() {
+  const button = document.querySelector("#manage-repos");
+  if (button)
+    button.onclick = () => {
+      modal.innerHTML = `<p class="eyebrow">CONNECT YOUR CODE</p><h2>Choose repositories in your terminal.</h2><p>Scire searches your folders for Git repositories. Use the arrow keys to move, Space to select, and Enter to connect. You can type to filter the list.</p><div class="terminal-command"><code>scire setup</code><button class="secondary" id="copy-setup-command">Copy command</button></div><p><small>Already connected repositories start selected. Your learning history is kept if you change the selection.</small></p><div class="dialog-actions"><button class="primary" data-close>Done</button></div>`;
+      modal.showModal();
+      modal.querySelector("[data-close]").onclick = () => modal.close();
+      modal.querySelector("#copy-setup-command").onclick = async () => {
+        try {
+          await navigator.clipboard.writeText("scire setup");
+          toast("Setup command copied");
+        } catch {
+          toast("Run scire setup in a terminal.");
+        }
+      };
+    };
+  const submit = document.querySelector('#setup-form button[type="submit"]');
+  if (submit) submit.disabled = !state.repos.length;
+}
+let repositoryPolling = false;
+async function refreshRepositoryConnections() {
+  if (repositoryPolling) return;
+  repositoryPolling = true;
+  try {
+    const next = await api("home");
+    const signature = (repos) =>
+      JSON.stringify(repos.map((r) => [r.id, r.path]));
+    const changed = signature(next.repos) !== signature(state.repos);
+    state.repos = next.repos;
+    if (changed) {
+      const box = document.querySelector("#repo-connections");
+      if (box) {
+        box.innerHTML = repositoryConnectionsMarkup();
+        bindRepositoryConnections();
+      }
+    }
+    const model = document.querySelector('#setup-form input[name="model"]');
+    if (model && !model.value && next.profile.model)
+      model.value = next.profile.model;
+  } finally {
+    repositoryPolling = false;
+  }
+}
 function setup() {
   setHeading(
     "Make this your workspace.",
     "A few details, then the code.",
     "WELCOME TO SCIRE",
   );
-  content.innerHTML = `<section class="card setup"><h2>A small introduction</h2><p>Choose the code you work with and tell Scire about your experience.</p><form id="setup-form"><label>Your name</label><input name="name" required placeholder="Alex" value="${escape(state.profile.name)}"><label>What do you work on?</label><textarea name="role" placeholder="Backend engineer, new to this repository…">${escape(state.profile.role)}</textarea><label>Repository paths — one per line</label><textarea name="paths" required placeholder="/Users/you/work/project">${escape(state.repos.map((r) => r.path).join("\n"))}</textarea><label>OpenCode model</label><input name="model" required list="models" placeholder="provider/model" value="${escape(state.profile.model)}"><datalist id="models"></datalist><label>Fast triage model (optional)</label><input name="cheap_model" list="models" placeholder="Defaults to your primary model" value="${escape(state.profile.cheap_model)}"><p><small>OpenCode handles provider login. To connect an account, run <code>scire setup --connect</code> in your terminal. Keys never go in this form.</small></p><label style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="map_now" checked style="width:auto">Build repository maps in the background</label><button class="primary">Create workspace →</button></form></section>`;
+  content.innerHTML = `<section class="card setup"><h2>A small introduction</h2><p>Tell Scire about your experience. Your repositories are chosen in terminal setup.</p><form id="setup-form"><label>Your name</label><input name="name" required placeholder="Alex" value="${escape(state.profile.name)}"><label>What do you work on?</label><textarea name="role" placeholder="Backend engineer, new to this repository…">${escape(state.profile.role)}</textarea>${repositoryConnections()}<label>OpenCode model</label><input name="model" required list="models" placeholder="provider/model" value="${escape(state.profile.model)}"><datalist id="models"></datalist><label>Fast triage model (optional)</label><input name="cheap_model" list="models" placeholder="Defaults to your primary model" value="${escape(state.profile.cheap_model)}"><p><small>OpenCode handles provider login. To connect an account, run <code>scire setup --connect</code> in your terminal. Keys never go in this form.</small></p><label style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="map_now" checked style="width:auto">Build repository maps in the background</label><button class="primary" type="submit">Create workspace →</button></form></section>`;
   api("models")
     .then((r) => {
-      const n = document.querySelector("#models");
-      if (n)
-        n.innerHTML = r.models
+      const node = document.querySelector("#models");
+      if (node)
+        node.innerHTML = r.models
           .map((m) => `<option value="${escape(m)}">`)
           .join("");
     })
     .catch(() => {});
   document.querySelector("#setup-form").onsubmit = async (e) => {
     e.preventDefault();
-    const button = e.target.querySelector("button");
+    const button = e.target.querySelector('button[type="submit"]');
     button.disabled = true;
-    const d = Object.fromEntries(new FormData(e.target));
-    d.paths = d.paths
-      .split("\n")
-      .map((x) => x.trim())
-      .filter(Boolean);
-    d.map_now = d.map_now === "on";
+    const value = Object.fromEntries(new FormData(e.target));
+    value.map_now = value.map_now === "on";
     try {
-      await api("setup", d);
+      await api("setup", value);
       view = "home";
       await refresh();
     } catch (e) {
@@ -199,6 +244,7 @@ function setup() {
       button.disabled = false;
     }
   };
+  bindRepositoryConnections();
   autosize();
 }
 function areaTree(map, learnButton = true, parent = null) {
@@ -404,7 +450,7 @@ function render() {
       "Your profile and model preferences. Provider credentials remain in OpenCode.",
       "SETTINGS",
     );
-    content.innerHTML = `<section class="card setup"><h2>Profile & models</h2><form id="settings-form"><label>Name</label><input name="name" value="${escape(state.profile.name)}"><label>Your experience</label><textarea name="role">${escape(state.profile.role)}</textarea><label>Primary model</label><input name="model" required value="${escape(state.profile.model)}"><label>Fast triage model (optional)</label><input name="cheap_model" value="${escape(state.profile.cheap_model)}"><p><small>Choose models available through your connected OpenCode providers. Triage uses this fast model when configured.</small></p><button class="primary">Save settings</button></form><div class="card-footer"><button class="secondary" id="add-repos">Add repositories</button><button class="secondary" id="quit-server">Quit Scire</button></div></section>`;
+    content.innerHTML = `<section class="card setup"><h2>Profile & models</h2><form id="settings-form"><label>Name</label><input name="name" value="${escape(state.profile.name)}"><label>Your experience</label><textarea name="role">${escape(state.profile.role)}</textarea><label>Primary model</label><input name="model" required value="${escape(state.profile.model)}"><label>Fast triage model (optional)</label><input name="cheap_model" value="${escape(state.profile.cheap_model)}"><p><small>Choose models available through your connected OpenCode providers. Triage uses this fast model when configured.</small></p><button class="primary">Save settings</button></form>${repositoryConnections()}<div class="card-footer"><small>Your preferences stay on this machine.</small><button class="secondary" id="quit-server">Quit Scire</button></div></section>`;
     document.querySelector("#settings-form").onsubmit = async (e) => {
       e.preventDefault();
       try {
@@ -415,7 +461,7 @@ function render() {
         toast(e.message);
       }
     };
-    document.querySelector("#add-repos").onclick = setup;
+    bindRepositoryConnections();
     document.querySelector("#quit-server").onclick = async () => {
       await api("quit", {});
       toast("Scire is stopping. You can close this tab.");
@@ -430,7 +476,7 @@ function render() {
   const sessions = state.sessions.filter(
     (s) => !selectedRepo || s.repo === selectedRepo,
   );
-  content.innerHTML = `<div class="grid"><section class="card"><div class="card-heading"><h2>Learn</h2><span>BUILD YOUR MENTAL MODEL</span></div>${repos.map((r) => `<div><h3>${escape(r.name)} <span class="pill ${r.map.status === "ready" ? "blue" : ""}">${escape(r.map.status || "not mapped")}</span></h3><p><small>${r.map.concepts.length} mapped concepts${r.map.metrics ? ` · ${Math.round(r.map.metrics.seconds)}s · $${Number(r.map.metrics.cost).toFixed(3)} reported` : ""}</small></p>${r.map.areas.slice(0, 5).map(areaBar).join("") || '<div class="empty"><p>Your map organizes the code into areas you can learn one at a time.</p></div>'}${r.map.status === "working" ? `<div class="map-activity"><i class="pulse"></i>${escape(r.map.activity || "Exploring source…")}</div>` : ""}${r.map.error ? `<div class="error">${escape(r.map.error)}</div>` : ""}<div class="card-footer"><button class="secondary" data-concepts="${r.id}" ${!r.map.concepts.length ? "disabled" : ""}>View concepts</button>${r.map.status === "ready" ? `<button class="primary" data-learn="${r.id}">Start learning →</button>` : `<button class="${r.map.status === "working" ? "secondary" : "primary"}" data-map="${r.id}" ${r.map.status === "working" ? "disabled" : ""}>${r.map.status === "working" ? "Mapping…" : "Build map →"}</button>`}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">') || '<p class="empty">Add a repository in setup to get started.</p>'}</section><section class="card"><div class="card-heading"><h2>Review</h2><span>UNDERSTAND THE CHANGE</span></div>${repos.map((r) => `<h3>${escape(r.name)}</h3><div data-reviews="${r.id}" class="review-list"><p class="quiet">Loading pull requests…</p></div>`).join("")}<div class="card-footer"><small>About 5 minutes in code you know.</small><button class="secondary" id="branch-review">Choose a branch ↗</button></div></section></div>${askForm()}<section class="card sessions"><div class="card-heading"><h2>Recent sessions</h2><span>CONTINUE WHERE YOU LEFT OFF</span></div>${
+  content.innerHTML = `<div class="grid"><section class="card"><div class="card-heading"><h2>Learn</h2><span>BUILD YOUR MENTAL MODEL</span></div>${repos.map((r) => `<div><h3>${escape(r.name)} <span class="pill ${r.map.status === "ready" ? "blue" : ""}">${escape(r.map.status || "not mapped")}</span></h3><p><small>${r.map.concepts.length} mapped concepts${r.map.metrics ? ` · ${Math.round(r.map.metrics.seconds)}s · $${Number(r.map.metrics.cost).toFixed(3)} reported` : ""}</small></p>${r.map.areas.slice(0, 5).map(areaBar).join("") || '<div class="empty"><p>Your map organizes the code into areas you can learn one at a time.</p></div>'}${r.map.status === "working" ? `<div class="map-activity"><i class="pulse"></i>${escape(r.map.activity || "Exploring source…")}</div>` : ""}${r.map.error ? `<div class="error">${escape(r.map.error)}</div>` : ""}<div class="card-footer"><button class="secondary" data-concepts="${r.id}" ${!r.map.concepts.length ? "disabled" : ""}>View concepts</button>${r.map.status === "ready" ? `<button class="primary" data-learn="${r.id}">Start learning →</button>` : `<button class="${r.map.status === "working" ? "secondary" : "primary"}" data-map="${r.id}" ${r.map.status === "working" ? "disabled" : ""}>${r.map.status === "working" ? "Mapping…" : "Build map →"}</button>`}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">') || '<p class="empty">Run scire setup in your terminal to choose repositories.</p>'}</section><section class="card"><div class="card-heading"><h2>Review</h2><span>UNDERSTAND THE CHANGE</span></div>${repos.map((r) => `<h3>${escape(r.name)}</h3><div data-reviews="${r.id}" class="review-list"><p class="quiet">Loading pull requests…</p></div>`).join("")}<div class="card-footer"><small>About 5 minutes in code you know.</small><button class="secondary" id="branch-review">Choose a branch ↗</button></div></section></div>${askForm()}<section class="card sessions"><div class="card-heading"><h2>Recent sessions</h2><span>CONTINUE WHERE YOU LEFT OFF</span></div>${
     sessions
       .slice(0, 10)
       .map(
@@ -954,6 +1000,8 @@ document.querySelector("#repo-menu").onclick = () => {
 refresh();
 setInterval(() => {
   if (view === "session") pollWorkspace();
+  else if (document.querySelector("#repo-connections"))
+    refreshRepositoryConnections().catch(() => {});
   else if (
     state?.repos.some((r) =>
       ["working", "missing", "queued"].includes(r.map.status),

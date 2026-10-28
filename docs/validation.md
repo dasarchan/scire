@@ -19,3 +19,12 @@ The final suite has 24 passing checks, including a running Chrome app test. Auto
 Chrome checks cover the actual Flask output, source pinning, keyboard resizing, code citations, completion and next steps, the Knowledge tree, desktop/narrow/phone widths and no horizontal page overflow. The automated running-app check also exercises inline Ask answers and their source preview. A real private GitHub PR was fetched into a separate pinned worktree using existing GitHub CLI authentication. No GitHub review comments were posted.
 
 Weekly scheduling is checked through its generated LaunchAgent configuration; no recurring job was installed during development. GitHub posting is covered through gating and preview tests, without posting a comment to a real PR.
+
+
+## v0.1.1 setup validation
+
+The suite now has 39 passing checks, including two running Chrome tests. Repository setup covers search/Space/Enter keyboard selection, existing connections, cancellation, linked Git worktrees, exclusions and symlink handling, bounded scans, folder browsing, preserved learning history and live connection updates without losing profile edits.
+
+A real home-folder scan found 76 repositories across 7,887 directories in 1.4 seconds. The interactive check also included the existing Flask connection outside the home folder: 77 repositories in 0.6 seconds on a warm scan. Depth-limited results are labelled and another folder can be searched through the terminal browser. No source contents were read for discovery, and no AI inference was started by the picker.
+
+The real Flask connection appeared read-only in Settings. Chrome verified that setup has no repository path field, waits for a terminal selection, and submits no paths. Desktop and phone-width checks passed.

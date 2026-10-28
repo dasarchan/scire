@@ -117,3 +117,83 @@ def test_workspace_navigation_responsiveness_and_findings(workspace, tmp_path):
         server.should_exit = True
         thread.join(timeout=5)
         sock.close()
+
+
+@pytest.mark.skipif(not os.environ.get("SCIRE_BROWSER"), reason="Set SCIRE_BROWSER to run Chrome checks")
+def test_setup_reflects_terminal_connections_without_path_fields(workspace, monkeypatch):
+    from scire import operations
+    from playwright.sync_api import sync_playwright
+
+    store, repo, root, m, module = workspace
+    store.set_repos([])
+    store.save_profile({"setup": False, "name": "", "role": "", "model": "test/model", "cheap_model": ""})
+    monkeypatch.setattr(operations, "available_models", lambda: ["test/model"])
+
+    class QuietService(Service):
+        async def start(self):
+            pass
+
+        async def reviews(self, rid):
+            return {"items": [], "branches": [], "error": None}
+
+    app = create_app("setup-token", QuietService())
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(128)
+    server = uvicorn.Server(uvicorn.Config(app, log_level="error", access_log=False))
+    thread = threading.Thread(target=lambda: server.run(sockets=[sock]), daemon=True)
+    thread.start()
+    for _ in range(100):
+        if server.started:
+            break
+        time.sleep(0.02)
+    assert server.started
+    base = f"http://127.0.0.1:{sock.getsockname()[1]}"
+    try:
+        with sync_playwright() as p:
+            executable = os.environ["SCIRE_BROWSER"]
+            browser = p.chromium.launch(
+                **({"executable_path": executable} if executable != "chromium" else {})
+            )
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            errors = []
+            payload = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.on(
+                "request",
+                lambda request: (
+                    payload.append(request.post_data_json) if request.url.endswith("/api/setup") else None
+                ),
+            )
+            page.goto(base + "/#setup-token")
+            page.get_by_role("heading", name="A small introduction").wait_for()
+            assert page.locator('[name="paths"]').count() == 0
+            assert page.get_by_role("button", name="Create workspace →").is_disabled()
+            page.get_by_label("Your name", exact=True).fill("Alex")
+            page.get_by_label("What do you work on?", exact=True).fill("Learning the request flow")
+            page.get_by_role("button", name="Choose in terminal ↗").click()
+            page.get_by_role("heading", name="Choose repositories in your terminal.").wait_for()
+            page.get_by_role("button", name="Done", exact=True).click()
+            # Simulate the CLI committing its selection while this form stays open.
+            store.set_repos([root])
+            page.locator(".repo-connection b").wait_for()
+            assert page.get_by_label("Your name", exact=True).input_value() == "Alex"
+            assert (
+                page.get_by_label("What do you work on?", exact=True).input_value()
+                == "Learning the request flow"
+            )
+            assert page.get_by_role("button", name="Create workspace →").is_enabled()
+            page.get_by_label("Build repository maps in the background").uncheck()
+            assert page.evaluate("document.documentElement.scrollWidth") == 390
+            page.get_by_role("button", name="Create workspace →").click()
+            page.get_by_role("heading", name="Keep the code in mind.").wait_for()
+            assert payload and "paths" not in payload[0]
+            assert store.profile()["name"] == "Alex" and store.repos()[0]["id"] == repo["id"]
+            page.locator('[data-view="settings"]').click()
+            page.get_by_role("heading", name="Connected repositories", exact=True).wait_for()
+            assert page.locator('[name="paths"]').count() == 0 and not errors
+            browser.close()
+    finally:
+        server.should_exit = True
+        thread.join(timeout=5)
+        sock.close()
