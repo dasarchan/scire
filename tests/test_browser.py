@@ -386,3 +386,77 @@ def test_repo_dropdown_selection_search_and_keyboard(workspace, tmp_path):
         server.should_exit = True
         thread.join(timeout=5)
         sock.close()
+
+
+@pytest.mark.skipif(not os.environ.get("SCIRE_BROWSER"), reason="Set SCIRE_BROWSER to run Chrome checks")
+def test_live_mapping_transcript_completion_and_mobile(workspace, tmp_path):
+    from playwright.sync_api import sync_playwright, expect
+    from scire.paths import write_json
+
+    store, repo, root, mapped, module = workspace
+    store.save_profile({"setup": True, "name": "Alex", "model": "test/model"})
+    path = store.repo_dir(repo["id"]) / "map.json"
+    mapped.update(
+        status="working",
+        started_at=time.time(),
+        last_activity=time.time(),
+        events=[{"id": "a", "kind": "text", "text": "Tracing the application entry point."}],
+    )
+    write_json(path, mapped)
+
+    class QuietService(Service):
+        async def start(self):
+            pass
+
+        async def reviews(self, rid):
+            return {"items": [], "branches": [], "error": None}
+
+    app = create_app("mapping-token", QuietService())
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(128)
+    server = uvicorn.Server(uvicorn.Config(app, log_level="error", access_log=False))
+    thread = threading.Thread(target=lambda: server.run(sockets=[sock]), daemon=True)
+    thread.start()
+    for _ in range(100):
+        if server.started:
+            break
+        time.sleep(0.02)
+    try:
+        with sync_playwright() as p:
+            executable = os.environ["SCIRE_BROWSER"]
+            browser = p.chromium.launch(
+                **({"executable_path": executable} if executable != "chromium" else {})
+            )
+            page = browser.new_page(viewport={"width": 1440, "height": 1000})
+            errors = []
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.goto(f"http://127.0.0.1:{sock.getsockname()[1]}/#mapping-token")
+            expect(page.locator("#mapping-title")).to_have_text("Mapping " + repo["name"])
+            expect(page.locator(".mapping-text")).to_have_text("Tracing the application entry point.")
+            # In-place partial text updates, with agent-supplied HTML rendered as text.
+            page.locator(".mapping-text").evaluate("node => node.dataset.retained = 'yes'")
+            mapped["events"][0]["text"] += " <script>not executable</script>"
+            mapped["events"].append(
+                {"id": "b", "kind": "tool", "text": "Reading core.py", "status": "completed"}
+            )
+            write_json(path, mapped)
+            expect(page.locator(".mapping-text")).to_contain_text("not executable")
+            assert page.locator(".mapping-text").get_attribute("data-retained") == "yes"
+            assert page.locator(".mapping-text script").count() == 0
+            page.screenshot(path="work/mapping-desktop.png", full_page=True)
+            page.set_viewport_size({"width": 390, "height": 844})
+            assert page.evaluate("document.documentElement.scrollWidth") == 390
+            page.screenshot(path="work/mapping-mobile.png", full_page=True)
+            mapped.update(status="ready", finished_at=time.time(), metrics={"seconds": 2, "cost": 0})
+            write_json(path, mapped)
+            expect(page.locator("#mapping-title")).to_have_text(repo["name"] + " is ready")
+            expect(page.get_by_role("button", name="Start learning →")).to_be_visible()
+            page.get_by_role("button", name="← Workspace").click()
+            expect(page.get_by_role("heading", name="Learn", exact=True)).to_be_visible()
+            assert not errors
+            browser.close()
+    finally:
+        server.should_exit = True
+        thread.join(5)
+        sock.close()

@@ -57,3 +57,10 @@ The real Flask connection appeared read-only in Settings. Chrome verified that s
 - Inspected onboarding at 1440px and 390px. Checked the overview, knowledge tree and lesson/source pane against the existing real Flask map and lessons in isolated read-only QA, with agents disabled. Confirmed no horizontal document overflow at 390px; run-status metadata now wraps.
 - Refined shared navigation SVGs, typography, cards, buttons, question options and code readability. Onboarding is a separate plain JS/CSS module, with no framework or build step.
 - Ruff, JavaScript syntax and package builds passed. Verified `onboarding.js` and `onboarding.css` are included in the release wheel. No additional inference runs were needed for this UI change.
+
+
+## OpenCode output repair and mapping activity — v0.1.7 (2026-10-28)
+
+- 57 checks passed, including four running Chrome tests. New checks cover project-relative/absolute output permissions, source/config denial, assistant-only partial text, hidden reasoning/tool bodies, bounded transcript updates, persisted completion timing and actionable missing-manifest errors.
+- Real OpenCode calibration on the user’s pinned Flask source completed in 37.479 seconds, with two validated modules and no fix passes. Provider-reported cost was $0 (subscription accounting; not an independent estimate). The run used isolated Scire state and the existing provider login.
+- Chrome checked live in-place text updates, safe HTML escaping, tool titles, completion/Start learning, workspace navigation and 390px document bounds. Screenshots: work/mapping-desktop.png and work/mapping-mobile.png.

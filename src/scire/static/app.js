@@ -1,3 +1,4 @@
+import { mappingView } from "./mapping.js";
 import { startOnboarding } from "./onboarding.js";
 const token =
   location.hash.slice(1) || sessionStorage.getItem("scire-token") || "";
@@ -45,6 +46,15 @@ const percent = (n) => Math.round((n || 0) * 100),
           ? Math.floor(m / 60) + "h ago"
           : Math.floor(m / 1440) + "d ago";
   };
+let mappingRepo = null;
+const dismissedMaps = new Set();
+const mappingKey = (r) =>
+  r.id + ":" + (r.map.started_at || r.map.attempt_sha || "initial");
+const showMapping = (rid) => {
+  mappingRepo = rid;
+  view = "mapping";
+  render();
+};
 const mdCache = new Map();
 async function api(path, body) {
   const r = await fetch("/api/" + path, {
@@ -539,6 +549,45 @@ function render() {
     setup();
     return;
   }
+  if (view === "home") {
+    const active = repos.find(
+      (r) =>
+        ["working", "queued"].includes(r.map.status) &&
+        !dismissedMaps.has(mappingKey(r)),
+    );
+    if (active) {
+      mappingRepo = active.id;
+      view = "mapping";
+    }
+  }
+  document.body.classList.toggle("mapping-active", view === "mapping");
+  if (view === "mapping") {
+    const repo = state.repos.find((r) => r.id === mappingRepo);
+    if (!repo) {
+      view = "home";
+      render();
+      return;
+    }
+    setHeading("");
+    mappingView(content, repo, state.repos, {
+      back: () => {
+        dismissedMaps.add(mappingKey(repo));
+        view = "home";
+        render();
+      },
+      select: showMapping,
+      learn: () => openNew(repo.id),
+      retry: async () => {
+        try {
+          await api(`maps/${repo.id}/build`, {});
+          await refresh();
+        } catch (e) {
+          toast(e.message);
+        }
+      },
+    });
+    return;
+  }
   if (view === "session") {
     renderWorkspace();
     return;
@@ -594,7 +643,7 @@ function render() {
   const sessions = state.sessions.filter(
     (s) => !selectedRepo || s.repo === selectedRepo,
   );
-  content.innerHTML = `<div class="grid"><section class="card"><div class="card-heading"><h2>Learn</h2></div>${repos.map((r) => `<div><h3>${escape(r.name)} <span class="pill ${r.map.status === "ready" ? "blue" : ""}">${escape(r.map.status || "not mapped")}</span></h3><p><small>${r.map.concepts.length} concepts · ${r.map.areas.length} areas</small></p>${r.map.areas.slice(0, 5).map(areaBar).join("") || '<div class="empty"><p>Build a map to start learning.</p></div>'}${r.map.status === "working" ? `<div class="map-activity"><i class="pulse"></i>${escape(r.map.activity || "Exploring source…")}</div>` : ""}${r.map.error ? `<div class="error">${escape(r.map.error)}</div>` : ""}<div class="card-footer"><button class="secondary" data-concepts="${r.id}" ${!r.map.concepts.length ? "disabled" : ""}>View concepts</button>${r.map.status === "ready" ? `<button class="primary" data-learn="${r.id}">Start learning →</button>` : `<button class="${r.map.status === "working" ? "secondary" : "primary"}" data-map="${r.id}" ${r.map.status === "working" ? "disabled" : ""}>${r.map.status === "working" ? "Mapping…" : "Build map →"}</button>`}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">') || '<p class="empty">Run scire setup in your terminal to choose repositories.</p>'}</section><section class="card"><div class="card-heading"><h2>Review</h2></div>${repos.map((r) => `<h3>${escape(r.name)}</h3><div data-reviews="${r.id}" class="review-list"><p class="quiet">Loading pull requests…</p></div>`).join("")}<div class="card-footer"><button class="secondary" id="branch-review">Choose a branch ↗</button></div></section></div>${askForm()}<section class="card sessions"><div class="card-heading"><h2>Recent sessions</h2></div>${
+  content.innerHTML = `<div class="grid"><section class="card"><div class="card-heading"><h2>Learn</h2></div>${repos.map((r) => `<div><h3>${escape(r.name)} <span class="pill ${r.map.status === "ready" ? "blue" : ""}">${escape(r.map.status || "not mapped")}</span></h3><p><small>${r.map.concepts.length} concepts · ${r.map.areas.length} areas</small></p>${r.map.areas.slice(0, 5).map(areaBar).join("") || '<div class="empty"><p>Build a map to start learning.</p></div>'}${["working", "queued"].includes(r.map.status) ? `<button class="map-activity secondary" data-map-view="${r.id}"><i class="pulse"></i>Mapping in progress · View live activity →</button>` : ""}${r.map.error ? `<div class="error">${escape(r.map.error)}</div>` : ""}<div class="card-footer"><button class="secondary" data-concepts="${r.id}" ${!r.map.concepts.length ? "disabled" : ""}>View concepts</button>${r.map.status === "ready" ? `<button class="primary" data-learn="${r.id}">Start learning →</button>` : `<button class="${r.map.status === "working" ? "secondary" : "primary"}" data-map="${r.id}" ${r.map.status === "working" ? "disabled" : ""}>${r.map.status === "working" ? "Mapping…" : "Build map →"}</button>`}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">') || '<p class="empty">Run scire setup in your terminal to choose repositories.</p>'}</section><section class="card"><div class="card-heading"><h2>Review</h2></div>${repos.map((r) => `<h3>${escape(r.name)}</h3><div data-reviews="${r.id}" class="review-list"><p class="quiet">Loading pull requests…</p></div>`).join("")}<div class="card-footer"><button class="secondary" id="branch-review">Choose a branch ↗</button></div></section></div>${askForm()}<section class="card sessions"><div class="card-heading"><h2>Recent sessions</h2></div>${
     sessions
       .slice(0, 10)
       .map(
@@ -609,12 +658,17 @@ function render() {
   content
     .querySelectorAll("[data-concepts]")
     .forEach((b) => (b.onclick = () => conceptsDialog(b.dataset.concepts)));
+  content
+    .querySelectorAll("[data-map-view]")
+    .forEach((b) => (b.onclick = () => showMapping(b.dataset.mapView)));
   content.querySelectorAll("[data-map]").forEach(
     (b) =>
       (b.onclick = async () => {
         try {
           b.disabled = true;
           await api(`maps/${b.dataset.map}/build`, {});
+          mappingRepo = b.dataset.map;
+          view = "mapping";
           await refresh();
         } catch (e) {
           toast(e.message);
@@ -1148,6 +1202,7 @@ function renderRepoOptions() {
   repoOptions.querySelectorAll("[data-repo]").forEach((button) => {
     button.onclick = () => {
       selectedRepo = button.dataset.repo || null;
+      if (view === "mapping") view = "home";
       closeRepoDropdown(true);
       if (path) {
         location.href = selectedRepo
@@ -1233,6 +1288,7 @@ document.querySelector("#repo-settings").onclick = () => {
 refresh();
 setInterval(() => {
   if (onboarding) refreshRepositoryConnections().catch(() => {});
+  else if (view === "mapping") refresh();
   else if (view === "session") pollWorkspace();
   else if (document.querySelector("#repo-connections"))
     refreshRepositoryConnections().catch(() => {});

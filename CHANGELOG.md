@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.7 — 2026-10-28
+
+- Fix OpenCode output permissions using job-relative paths and an isolated Git root; support GPT providers’ apply_patch tool in lesson instructions.
+- Replace missing-manifest schema errors with a concrete file-writing error and repair instructions.
+- Show mapping in a focused activity screen with streamed narration, tool titles, elapsed time, quiet-period status and completion/error states.
+- Keep the transcript available after mapping, let users return to the workspace, and preserve scroll position while reading earlier output.
+
 ## v0.1.6 — 2026-10-28
 
 - Introduce four-step, keyboard-friendly onboarding with optional background, back navigation, refresh recovery and inline save errors.
