@@ -1,3 +1,4 @@
+import { startOnboarding } from "./onboarding.js";
 const token =
   location.hash.slice(1) || sessionStorage.getItem("scire-token") || "";
 if (token) {
@@ -187,6 +188,7 @@ function bindRepositoryConnections() {
   if (submit) submit.disabled = !state.repos.length;
 }
 let repositoryPolling = false;
+let onboarding;
 async function refreshRepositoryConnections() {
   if (repositoryPolling) return;
   repositoryPolling = true;
@@ -196,6 +198,10 @@ async function refreshRepositoryConnections() {
       JSON.stringify(repos.map((r) => [r.id, r.path]));
     const changed = signature(next.repos) !== signature(state.repos);
     state.repos = next.repos;
+    if (onboarding) {
+      onboarding.update(next.repos, next.profile);
+      return;
+    }
     if (changed) {
       const box = document.querySelector("#repo-connections");
       if (box) {
@@ -218,8 +224,8 @@ async function refreshRepositoryConnections() {
 function profileFields() {
   return `<section class="settings-section"><div class="section-intro"><h2>About you</h2><p>Lessons adapt to your experience.</p></div><div class="section-fields"><label for="profile-name">Your name</label><input id="profile-name" name="name" required placeholder="Alex" value="${escape(state.profile.name)}"><label for="profile-role">What do you work on?</label><textarea id="profile-role" name="role" placeholder="Your role and experience with this codebase">${escape(state.profile.role)}</textarea></div></section>`;
 }
-function modelPicker(name, label, optional = false) {
-  const value = state.profile[name] || "";
+function modelPicker(name, label, optional = false, selectedValue) {
+  const value = selectedValue ?? state.profile[name] ?? "";
   return `<fieldset class="model-picker" data-name="${name}" data-optional="${optional}"><legend>${label}</legend><input type="hidden" name="${name}" value="${escape(value)}"><div class="model-selects"><div><label for="${name}-provider">Provider</label><select id="${name}-provider" ${optional ? "" : "required"} aria-label="${label} provider"><option value="">Loading providers…</option></select></div><div><label for="${name}-model">Model</label><select id="${name}-model" aria-label="${label}" ${optional ? "" : "required"}><option value="">Loading models…</option></select></div></div>${optional ? '<p class="field-help">Use a faster model for short questions. Leave unset to use your teaching model.</p>' : ""}<div class="model-status" role="status"></div><button type="button" class="text-button model-manual-toggle">Enter a custom model ID</button><div class="model-manual" hidden><label for="${name}-custom">${label} ID</label><input id="${name}-custom" placeholder="provider/model" value="${escape(value)}" disabled></div></fieldset>`;
 }
 function modelFields() {
@@ -351,26 +357,21 @@ function bindModelPickers() {
   });
 }
 function setup() {
-  setHeading("Set up Scire");
-  content.innerHTML = `<section class="setup"><form id="setup-form">${profileFields()}${modelFields()}${repositoryConnections()}<div class="form-actions"><label class="checkbox-label"><input type="checkbox" name="map_now" checked>Build repository maps in the background</label><button class="primary" type="submit">Create workspace →</button></div></form></section>`;
-  bindModelPickers();
-  document.querySelector("#setup-form").onsubmit = async (e) => {
-    e.preventDefault();
-    const button = e.target.querySelector('button[type="submit"]');
-    button.disabled = true;
-    const value = Object.fromEntries(new FormData(e.target));
-    value.map_now = value.map_now === "on";
-    try {
+  if (onboarding) return;
+  onboarding = startOnboarding({
+    container: content,
+    profile: state.profile,
+    getRepos: () => state.repos,
+    modelPicker,
+    bindModels: bindModelPickers,
+    escape,
+    complete: async (value) => {
       await api("setup", value);
+      onboarding = null;
       view = "home";
       await refresh();
-    } catch (e) {
-      toast(e.message);
-      button.disabled = false;
-    }
-  };
-  bindRepositoryConnections();
-  autosize();
+    },
+  });
 }
 function areaTree(map, learnButton = true, parent = null) {
   return map.areas
@@ -519,6 +520,7 @@ function bindAsk(session = null) {
 }
 function render() {
   if (!state) return;
+  document.body.classList.toggle("onboarding-active", !state.profile.setup);
   document
     .querySelectorAll("[data-view]")
     .forEach((b) => b.classList.toggle("selected", b.dataset.view === view));
@@ -543,10 +545,7 @@ function render() {
   }
   document.querySelector("#session-nav").innerHTML = "";
   if (view === "knowledge") {
-    setHeading(
-      "Knowledge",
-      "Your understanding by area, based on your answers.",
-    );
+    setHeading("Knowledge");
     content.innerHTML = repos
       .map(
         (r) =>
@@ -595,7 +594,7 @@ function render() {
   const sessions = state.sessions.filter(
     (s) => !selectedRepo || s.repo === selectedRepo,
   );
-  content.innerHTML = `<div class="grid"><section class="card"><div class="card-heading"><h2>Learn</h2></div>${repos.map((r) => `<div><h3>${escape(r.name)} <span class="pill ${r.map.status === "ready" ? "blue" : ""}">${escape(r.map.status || "not mapped")}</span></h3><p><small>${r.map.concepts.length} mapped concepts${r.map.metrics ? ` · ${Math.round(r.map.metrics.seconds)}s · $${Number(r.map.metrics.cost).toFixed(3)} reported` : ""}</small></p>${r.map.areas.slice(0, 5).map(areaBar).join("") || '<div class="empty"><p>Build a map to start learning.</p></div>'}${r.map.status === "working" ? `<div class="map-activity"><i class="pulse"></i>${escape(r.map.activity || "Exploring source…")}</div>` : ""}${r.map.error ? `<div class="error">${escape(r.map.error)}</div>` : ""}<div class="card-footer"><button class="secondary" data-concepts="${r.id}" ${!r.map.concepts.length ? "disabled" : ""}>View concepts</button>${r.map.status === "ready" ? `<button class="primary" data-learn="${r.id}">Start learning →</button>` : `<button class="${r.map.status === "working" ? "secondary" : "primary"}" data-map="${r.id}" ${r.map.status === "working" ? "disabled" : ""}>${r.map.status === "working" ? "Mapping…" : "Build map →"}</button>`}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">') || '<p class="empty">Run scire setup in your terminal to choose repositories.</p>'}</section><section class="card"><div class="card-heading"><h2>Review</h2></div>${repos.map((r) => `<h3>${escape(r.name)}</h3><div data-reviews="${r.id}" class="review-list"><p class="quiet">Loading pull requests…</p></div>`).join("")}<div class="card-footer"><button class="secondary" id="branch-review">Choose a branch ↗</button></div></section></div>${askForm()}<section class="card sessions"><div class="card-heading"><h2>Recent sessions</h2></div>${
+  content.innerHTML = `<div class="grid"><section class="card"><div class="card-heading"><h2>Learn</h2></div>${repos.map((r) => `<div><h3>${escape(r.name)} <span class="pill ${r.map.status === "ready" ? "blue" : ""}">${escape(r.map.status || "not mapped")}</span></h3><p><small>${r.map.concepts.length} concepts · ${r.map.areas.length} areas</small></p>${r.map.areas.slice(0, 5).map(areaBar).join("") || '<div class="empty"><p>Build a map to start learning.</p></div>'}${r.map.status === "working" ? `<div class="map-activity"><i class="pulse"></i>${escape(r.map.activity || "Exploring source…")}</div>` : ""}${r.map.error ? `<div class="error">${escape(r.map.error)}</div>` : ""}<div class="card-footer"><button class="secondary" data-concepts="${r.id}" ${!r.map.concepts.length ? "disabled" : ""}>View concepts</button>${r.map.status === "ready" ? `<button class="primary" data-learn="${r.id}">Start learning →</button>` : `<button class="${r.map.status === "working" ? "secondary" : "primary"}" data-map="${r.id}" ${r.map.status === "working" ? "disabled" : ""}>${r.map.status === "working" ? "Mapping…" : "Build map →"}</button>`}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">') || '<p class="empty">Run scire setup in your terminal to choose repositories.</p>'}</section><section class="card"><div class="card-heading"><h2>Review</h2></div>${repos.map((r) => `<h3>${escape(r.name)}</h3><div data-reviews="${r.id}" class="review-list"><p class="quiet">Loading pull requests…</p></div>`).join("")}<div class="card-footer"><button class="secondary" id="branch-review">Choose a branch ↗</button></div></section></div>${askForm()}<section class="card sessions"><div class="card-heading"><h2>Recent sessions</h2></div>${
     sessions
       .slice(0, 10)
       .map(
@@ -901,7 +900,7 @@ function renderCode() {
       .map(escape)
       .join(`<mark>${escape(keyword)}</mark>`);
   }
-  pane.innerHTML = `<div class="code-header"><div>${escape(anchor.path)}<small>LINES ${anchor.start_line}–${anchor.end_line} · ${anchor.key_lines.length} key line${anchor.key_lines.length === 1 ? "" : "s"}</small></div><button class="pin-button ${pinned ? "pinned" : ""}" id="pin-code">${pinned ? "Pinned · unpin" : "Pin code"}</button></div><div class="code-lines">${anchor.lines.map((line) => `<div class="code-line ${line.highlight ? "highlight" : ""} ${line.key ? "key-line" : ""}" data-line="${line.number}"><span class="line-no">${line.number}</span><code>${mark(line)}</code></div>`).join("")}</div><div class="look-chips">${anchor.look_for.map((word) => `<button class="${keyword === word ? "active" : ""}" data-keyword="${escape(word)}">Look for ${escape(word)}${keyword === word ? ` · ${uses.length ? (keywordIndex % uses.length) + 1 : 0}/${uses.length}` : ""}</button>`).join("")}</div>`;
+  pane.innerHTML = `<div class="code-header"><div>${escape(anchor.path)}<small>Lines ${anchor.start_line}–${anchor.end_line} · ${anchor.key_lines.length} key line${anchor.key_lines.length === 1 ? "" : "s"}</small></div><button class="pin-button ${pinned ? "pinned" : ""}" id="pin-code">${pinned ? "Pinned · unpin" : "Pin code"}</button></div><div class="code-lines">${anchor.lines.map((line) => `<div class="code-line ${line.highlight ? "highlight" : ""} ${line.key ? "key-line" : ""}" data-line="${line.number}"><span class="line-no">${line.number}</span><code>${mark(line)}</code></div>`).join("")}</div><div class="look-chips">${anchor.look_for.map((word) => `<button class="${keyword === word ? "active" : ""}" data-keyword="${escape(word)}">Look for ${escape(word)}${keyword === word ? ` · ${uses.length ? (keywordIndex % uses.length) + 1 : 0}/${uses.length}` : ""}</button>`).join("")}</div>`;
   document.querySelector("#pin-code").onclick = () => {
     pinned = !pinned;
     renderCode();
@@ -1064,6 +1063,8 @@ async function refresh() {
     render();
   } catch (e) {
     content.innerHTML = `<div class="error">${escape(e.message)}. Start Scire from your terminal and use its browser link.</div>`;
+  } finally {
+    document.body.removeAttribute("data-loading");
   }
 }
 document.querySelectorAll("[data-view]").forEach(
@@ -1231,7 +1232,8 @@ document.querySelector("#repo-settings").onclick = () => {
 
 refresh();
 setInterval(() => {
-  if (view === "session") pollWorkspace();
+  if (onboarding) refreshRepositoryConnections().catch(() => {});
+  else if (view === "session") pollWorkspace();
   else if (document.querySelector("#repo-connections"))
     refreshRepositoryConnections().catch(() => {});
   else if (

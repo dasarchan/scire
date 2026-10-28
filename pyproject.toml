@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "scire-local"
-version = "0.1.5"
+version = "0.1.6"
 description = "Keep your understanding of a codebase current"
 readme = "README.md"
 requires-python = ">=3.11"

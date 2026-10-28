@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.6 — 2026-10-28
+
+- Introduce four-step, keyboard-friendly onboarding with optional background, back navigation, refresh recovery and inline save errors.
+- Reuse the configured OpenCode model, keep advanced settings out of onboarding, and sync terminal-selected repos live.
+- Refine app spacing, icons, typography, cards, buttons, lessons and source-view surfaces with one consistent dark theme.
+- Avoid flashing the full workspace before the first setup question loads.
+
 ## v0.1.5 — 2026-10-28
 
 - Simplify typography, remove decorative captions and slogans, and organize setup/settings into clear form sections.

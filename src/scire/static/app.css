@@ -1,12 +1,12 @@
 :root {
   color-scheme: dark;
-  --bg: #101216;
-  --panel: #15181e;
-  --raised: #1b1f27;
-  --line: #292f3a;
-  --text: #e8ebef;
-  --muted: #919aa9;
-  --blue: #79a8ff;
+  --bg: #111318;
+  --panel: #171a21;
+  --raised: #20242d;
+  --line: #2c313c;
+  --text: #edf0f5;
+  --muted: #9aa4b4;
+  --blue: #8bb3ff;
   --blue-bg: #1b2941;
   --green: #8bc5a6;
   --red: #e7a0a2;
@@ -51,11 +51,11 @@ a {
   color: var(--blue);
 }
 header {
-  height: 80px;
+  height: 68px;
   display: flex;
   align-items: center;
-  gap: 44px;
-  padding: 0 32px;
+  gap: 28px;
+  padding: 0 28px;
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
@@ -274,17 +274,17 @@ i {
 }
 .layout {
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  min-height: calc(100vh - 80px);
+  grid-template-columns: 192px minmax(0, 1fr);
+  min-height: calc(100vh - 68px);
 }
 aside#nav {
-  padding: 36px 20px;
+  padding: 28px 14px;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--line);
   position: sticky;
-  top: 80px;
-  height: calc(100vh - 80px);
+  top: 68px;
+  height: calc(100vh - 68px);
 }
 .nav-label,
 .nav-label {
@@ -319,7 +319,7 @@ small {
   line-height: 1.8;
 }
 main {
-  padding: 50px 52px 80px;
+  padding: 40px 42px 64px;
   max-width: 1450px;
   width: 100%;
   margin: auto;
@@ -361,7 +361,7 @@ p {
 }
 .card {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--panel);
   padding: 25px;
   min-width: 0;
@@ -387,7 +387,7 @@ p {
   align-items: center;
   justify-content: center;
   padding: 10px 15px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -396,9 +396,9 @@ p {
   background: var(--blue);
 }
 .secondary {
-  border: 1px solid var(--line);
-  color: var(--muted);
-  background: var(--raised);
+  border: 1px solid #3a414f;
+  color: var(--text);
+  background: transparent;
 }
 .empty {
   padding: 24px 0;
@@ -747,7 +747,7 @@ dialog .dialog-actions {
 .code-lines {
   overflow: auto;
   font:
-    11px/1.9 ui-monospace,
+    12px/1.85 ui-monospace,
     SFMono-Regular,
     monospace;
   padding: 12px 0;
@@ -820,14 +820,14 @@ dialog .dialog-actions {
 }
 .module-summary {
   font-size: 17px;
-  line-height: 1.7;
+  line-height: 1.65;
   color: var(--text);
   margin-bottom: 25px;
 }
 .prose p,
 .prose li {
-  font-size: 13px;
-  line-height: 1.9;
+  font-size: 14px;
+  line-height: 1.8;
 }
 .prose ul,
 .prose ol {
@@ -947,8 +947,8 @@ dialog .dialog-actions {
   text-align: left;
   border: 1px solid var(--line);
   border-radius: 6px;
-  padding: 12px;
-  font-size: 12px;
+  padding: 13px 15px;
+  font-size: 14px;
   line-height: 1.6;
   margin: 9px 0;
 }
@@ -963,9 +963,9 @@ dialog .dialog-actions {
   flex-shrink: 0;
 }
 .option.unknown {
-  border-style: dashed;
+  border-color: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 .option.correct {
   border-color: #436e5a;
@@ -988,14 +988,14 @@ dialog .dialog-actions {
   color: var(--blue);
 }
 .feedback p {
-  font-size: 12px;
+  font-size: 14px;
 }
 .findings-lock {
-  border: 1px dashed var(--line);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 17px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   margin-top: 25px;
 }
 .finding {
@@ -1009,7 +1009,7 @@ dialog .dialog-actions {
   font-size: 15px;
 }
 .finding p {
-  font-size: 12px;
+  font-size: 14px;
 }
 .finding .finding-label {
   font-size: 10px;
@@ -1090,11 +1090,11 @@ dialog .dialog-actions {
   font-size: 29px;
 }
 .workspace-status {
-  font:
-    10px ui-monospace,
-    monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
-  white-space: nowrap;
+  white-space: normal;
+  line-height: 1.6;
 }
 .activity-card {
   padding: 20px;
@@ -1611,4 +1611,110 @@ select:disabled {
   margin: 0;
   padding: 24px 0;
   border-top: 0;
+}
+
+/* Shared controls and reading surfaces. */
+button,
+a,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+.primary,
+.secondary,
+.option {
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.primary:hover:not(:disabled) {
+  background: #a4c3ff;
+}
+.secondary:hover:not(:disabled) {
+  background: var(--raised);
+  border-color: #58667d;
+}
+.option:hover:not(:disabled) {
+  background: var(--raised);
+  border-color: #52678b;
+}
+#nav button svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+#nav button {
+  gap: 11px;
+  font-size: 13px;
+}
+#nav button:not(.selected):hover {
+  color: var(--text);
+  background: var(--panel);
+}
+.card h2 {
+  font-weight: 600;
+}
+.card h3 {
+  font-size: 15px;
+}
+.card-heading {
+  margin-bottom: 20px;
+}
+.pill {
+  font: inherit;
+  font-size: 11px;
+  border-radius: 5px;
+  padding: 2px 7px;
+}
+.area-top {
+  font-size: 13px;
+}
+.area-top span:last-child {
+  font: inherit;
+  font-size: 12px;
+}
+.question-meta {
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.finding .finding-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text);
+}
+.setup input,
+.setup select,
+.setup textarea {
+  font-size: 14px;
+}
+.setup input:focus,
+.setup textarea:focus {
+  border-color: var(--blue);
+}
+dialog {
+  box-shadow: 0 22px 70px #0008;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body[data-loading] .layout,
+body[data-loading] #nav-toggle,
+body[data-loading] .repo-switcher,
+body[data-loading] .top-actions {
+  visibility: hidden;
+}
+
+#nav-toggle svg {
+  width: 18px;
+  height: 18px;
+  display: block;
 }

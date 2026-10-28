@@ -50,3 +50,10 @@ The real Flask connection appeared read-only in Settings. Chrome verified that s
 - 49 checks passed, including three running Chrome app tests. Browser coverage verifies provider/model selection, custom model IDs, saved values, clearing the quick-answer override, API error/retry, and terminal connection sync without overwriting edited fields.
 - Inspected setup screenshots at 1440px and 390px. Removed ornamental captions and the browser datalist; controls now use responsive native selects. Viewport screenshots avoid Chrome full-page capture resizing during responsive interaction checks.
 - Terminal model selection uses searchable provider and model lists, covered with native prompt response tests. Ruff, JavaScript syntax and package builds pass.
+
+## Guided onboarding and visual refinement — v0.1.6 (2026-10-28)
+
+- 49 pytest checks passed, including the complete four-question onboarding in Chrome: required name, optional background/skip, keyboard continuation, back navigation, refresh recovery, custom-model validation, live CLI repository sync, map preference retention and failed-save retry.
+- Inspected onboarding at 1440px and 390px. Checked the overview, knowledge tree and lesson/source pane against the existing real Flask map and lessons in isolated read-only QA, with agents disabled. Confirmed no horizontal document overflow at 390px; run-status metadata now wraps.
+- Refined shared navigation SVGs, typography, cards, buttons, question options and code readability. Onboarding is a separate plain JS/CSS module, with no framework or build step.
+- Ruff, JavaScript syntax and package builds passed. Verified `onboarding.js` and `onboarding.css` are included in the release wheel. No additional inference runs were needed for this UI change.
