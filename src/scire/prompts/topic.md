@@ -1,0 +1,1 @@
+Use the exact user question as the topic. Map it to known concepts and a parent area for any newly discovered concept. Explain a quick answer only if source establishes it; otherwise build a focused module or short connected round. Do not turn a small question into full-repository onboarding. Follow the preview/module/round contract.

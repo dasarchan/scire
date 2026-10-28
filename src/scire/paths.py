@@ -9,7 +9,11 @@ from contextlib import contextmanager
 from pathlib import Path
 
 _lock = threading.RLock()
-SECRET_NAME = re.compile(r"(^\.|^env\.storage\.|(?:^|[._-])(?:secrets?|credentials|tokens?)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$)", re.I)
+_local = threading.local()
+SECRET_NAME = re.compile(
+    r"(^\.|^env\.storage\.|(?:^|[._-])(?:secrets?|credentials|tokens?)(?:[._-]|$)|\.(?:pem|key|p12|pfx)$)",
+    re.I,
+)
 EXCLUDED = {"node_modules", "vendor", "dist", "build", "coverage", "__pycache__", "target", "venv"}
 
 
@@ -44,19 +48,26 @@ def write_json(path: Path, value) -> None:
 @contextmanager
 def transaction():
     with _lock:
+        if getattr(_local, "depth", 0):
+            yield
+            return
         lock = home() / "state.lock"
         with lock.open("a+") as stream:
             os.chmod(lock, 0o600)
             try:
                 import fcntl
+
                 fcntl.flock(stream, fcntl.LOCK_EX)
             except ImportError:
                 pass
             try:
+                _local.depth = 1
                 yield
             finally:
+                _local.depth = 0
                 try:
                     import fcntl
+
                     fcntl.flock(stream, fcntl.LOCK_UN)
                 except ImportError:
                     pass

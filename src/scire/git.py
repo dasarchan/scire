@@ -1,15 +1,29 @@
 from __future__ import annotations
-import hashlib
 import re
 import subprocess
 from pathlib import Path
-from .paths import home
+from .paths import home, SECRET_NAME, EXCLUDED
 
 
 def git(root: Path, *args: str, timeout=30) -> str:
-    if any('\0' in str(a) for a in args):
+    if any("\0" in str(a) for a in args):
         raise ValueError("Invalid Git argument")
-    result = subprocess.run(["git", "--no-pager", "-c", "core.hooksPath=/dev/null", "-c", "diff.external=", "-C", str(root), *args], capture_output=True, text=True, timeout=timeout)
+    result = subprocess.run(
+        [
+            "git",
+            "--no-pager",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "diff.external=",
+            "-C",
+            str(root),
+            *args,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
     if result.returncode:
         raise ValueError(result.stderr.strip()[-1000:] or "Git command failed")
     return result.stdout
@@ -44,7 +58,12 @@ def pinned_worktree(repo: dict, ref: str | None = None, remote_ref: str | None =
     mirror = base / "mirror.git"
     base.mkdir(parents=True, exist_ok=True)
     if not mirror.exists():
-        subprocess.run(["git", "clone", "--bare", "--no-hardlinks", str(source), str(mirror)], check=True, capture_output=True, timeout=90)
+        subprocess.run(
+            ["git", "clone", "--bare", "--no-hardlinks", str(source), str(mirror)],
+            check=True,
+            capture_output=True,
+            timeout=90,
+        )
     else:
         git(mirror, "fetch", "--no-tags", str(source), "+refs/heads/*:refs/heads/*", timeout=90)
     if remote_ref:
@@ -82,6 +101,38 @@ def diff_between(repo: dict, target: str) -> dict:
     patch = git(source, "diff", "--no-ext-diff", "--no-textconv", base_sha, head_sha, "--")
     if len(patch.encode()) > 750_000:
         raise ValueError("Diff exceeds 750 KB; select a narrower range")
-    files = git(source, "diff", "--name-only", base_sha, head_sha, "--").splitlines()
-    return {"kind": "branch", "title": target, "head": head_sha, "base": base_sha,
-            "source": str(path), "diff": patch, "files": files}
+    patch = filtered_diff(patch)
+    if not patch.strip():
+        raise ValueError("This target has no eligible code changes")
+    files = sorted(set(re.findall(r"^\+\+\+ b/(.+)$", patch, re.M)))
+    return {
+        "kind": "branch",
+        "title": target,
+        "head": head_sha,
+        "base": base_sha,
+        "source": str(path),
+        "diff": patch,
+        "files": files,
+    }
+
+
+def filtered_diff(patch: str) -> str:
+    """Exclude secret/dotfile blocks before a diff reaches inference."""
+    blocks = re.split(r"(?=^diff --git )", patch, flags=re.M)
+    kept = []
+    for block in blocks:
+        paths = re.findall(r"^(?:--- a/|\+\+\+ b/)(.+)$", block, re.M)
+        if not paths:
+            continue
+        if any(
+            any(
+                part in {"..", "."} or SECRET_NAME.search(part) or part in EXCLUDED
+                for part in Path(name).parts
+            )
+            for name in paths
+        ):
+            continue
+        if re.search(r"-----BEGIN .*PRIVATE KEY-----|sk-[A-Za-z0-9_-]{24,}|AKIA[A-Z0-9]{16}", block):
+            continue
+        kept.append(block)
+    return "".join(kept)

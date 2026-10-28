@@ -34,7 +34,9 @@ class Store:
         return home() / "repos" / rid
 
     def profile(self) -> dict:
-        return read_json(home() / "profile.json", {"name": "", "role": "", "model": "", "cheap_model": "", "setup": False})
+        return read_json(
+            home() / "profile.json", {"name": "", "role": "", "model": "", "cheap_model": "", "setup": False}
+        )
 
     def save_profile(self, profile: dict):
         write_json(home() / "profile.json", profile)
@@ -50,10 +52,25 @@ class Store:
     def new_session(self, rid: str, target: str = "learn", **values) -> dict:
         self.repo(rid)
         now = time.time()
-        s = {"id": uuid.uuid4().hex[:16], "repo": rid, "target": target, "title": "Learn the codebase",
-             "created_at": now, "updated_at": now, "status": "idle", "round": 0, "modules": [],
-             "answers": {}, "depths": {}, "topics": [], "activity": [], "cost": 0.0, "seconds": 0.0,
-             "started_learning": False, **values}
+        s = {
+            "id": uuid.uuid4().hex[:16],
+            "repo": rid,
+            "target": target,
+            "title": "Learn the codebase",
+            "created_at": now,
+            "updated_at": now,
+            "status": "idle",
+            "round": 0,
+            "modules": [],
+            "answers": {},
+            "depths": {},
+            "topics": [],
+            "activity": [],
+            "cost": 0.0,
+            "seconds": 0.0,
+            "started_learning": False,
+            **values,
+        }
         self.save_session(s)
         return s
 
@@ -76,7 +93,10 @@ class Store:
         path = self.repo_dir(rid) / "events.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         import json
+
         with transaction():
             with path.open("a") as stream:
-                stream.write(json.dumps({"version": 1, "time": time.time(), "type": kind, "data": value}) + "\n")
+                stream.write(
+                    json.dumps({"version": 1, "time": time.time(), "type": kind, "data": value}) + "\n"
+                )
             path.chmod(0o600)

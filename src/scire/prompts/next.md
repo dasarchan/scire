@@ -1,0 +1,1 @@
+Choose the next lesson from the weakest mapped areas and concepts, factoring in uncertainty, forgetting and code changes. Return an explanation of the focus that fits in two sentences and useful options; the UI presents these as a What next dialog. Do not automatically start another round or ask proactive clarification questions.

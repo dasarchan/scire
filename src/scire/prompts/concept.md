@@ -1,0 +1,1 @@
+Create a focused lesson on the requested concept. Teach its purpose, trace one example and show the smallest key code anchor. Repair the specific misconception rather than repeating the previous explanation. Use one module and 2–3 fresh questions. Use the same preview/module/round file contract as learn. Retain the person's question in its own words.
