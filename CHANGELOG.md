@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.4 — 2026-10-27
+
+- Replace the top-bar repository modal with an anchored dropdown, searchable repo list, selected checkmark and compact paths.
+- Support keyboard navigation, outside-click dismissal and narrow screens.
+- Keep repository selection on reload and when switching from a lesson back to the overview.
+
 ## v0.1.3 — 2026-10-27
 
 - Add Scire to shell PATH configuration automatically and show short setup commands.

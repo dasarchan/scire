@@ -8,7 +8,7 @@ const main = document.querySelector("#main"),
   content = document.querySelector("#content"),
   modal = document.querySelector("#modal");
 let state,
-  selectedRepo = null,
+  selectedRepo = new URLSearchParams(location.search).get("repo") || null,
   view = "home",
   workspace = null,
   activeModule = null,
@@ -405,8 +405,9 @@ function render() {
   const repos = selectedRepo
     ? state.repos.filter((r) => r.id === selectedRepo)
     : state.repos;
-  document.querySelector("#repo-menu").innerHTML =
-    `${escape(selectedRepo ? repos[0]?.name : "All repositories")} <span>⌄</span>`;
+  document.querySelector("#repo-label").textContent = selectedRepo
+    ? repos[0]?.name || "All repositories"
+    : "All repositories";
   if (!state.profile.setup) {
     setup();
     return;
@@ -983,20 +984,138 @@ document.querySelector("#nav-toggle").onclick = () => {
     .querySelector("#nav-toggle")
     .setAttribute("aria-expanded", String(!collapsed));
 };
-document.querySelector("#repo-menu").onclick = () => {
-  modal.innerHTML = `<h2>Choose a repository</h2><div class="row"><button data-repo="">All repositories</button></div>${(state?.repos || []).map((r) => `<div class="row"><button data-repo="${r.id}">${escape(r.name)}</button></div>`).join("")}<div class="dialog-actions"><button class="secondary" data-close>Close</button></div>`;
-  modal.showModal();
-  modal.querySelectorAll("[data-repo]").forEach(
-    (b) =>
-      (b.onclick = () => {
-        selectedRepo = b.dataset.repo || null;
-        modal.close();
-        if (path) location.href = "/";
-        else render();
-      }),
+const repoTrigger = document.querySelector("#repo-menu"),
+  repoDropdown = document.querySelector("#repo-dropdown"),
+  repoFilter = document.querySelector("#repo-filter"),
+  repoOptions = document.querySelector("#repo-options");
+function closeRepoDropdown(restoreFocus = false) {
+  repoDropdown.hidden = true;
+  repoTrigger.setAttribute("aria-expanded", "false");
+  if (restoreFocus) repoTrigger.focus();
+}
+function positionRepoDropdown() {
+  if (repoDropdown.hidden) return;
+  const rect = repoTrigger.getBoundingClientRect();
+  const left = Math.max(
+    12,
+    Math.min(rect.left, innerWidth - repoDropdown.offsetWidth - 12),
   );
-  modal.querySelector("[data-close]").onclick = () => modal.close();
+  repoDropdown.style.left = left + "px";
+  repoDropdown.style.top = rect.bottom + 8 + "px";
+  repoDropdown.style.maxHeight =
+    Math.min(440, innerHeight - rect.bottom - 20) + "px";
+}
+function renderRepoOptions() {
+  const query = repoFilter.value.trim().toLowerCase();
+  const repos = (state?.repos || []).filter((r) =>
+    (r.name + " " + r.path).toLowerCase().includes(query),
+  );
+  const icon =
+    '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2.5 6V4.5h5l2 2h8v9h-15z"/></svg>';
+  const option = (id, name, detail, fullPath = detail) =>
+    `<button type="button" role="option" tabindex="-1" class="repo-option" aria-selected="${(selectedRepo || "") === id}" data-repo="${escape(id)}">${icon}<span class="repo-option-copy"><strong>${escape(name)}</strong><small title="${escape(fullPath)}">${escape(detail)}</small></span><svg class="repo-checkmark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></button>`;
+  repoOptions.innerHTML =
+    (!query
+      ? option("", "All repositories", "Your connected workspaces")
+      : "") +
+    repos
+      .map((r) =>
+        option(
+          r.id,
+          r.name,
+          r.path.split("/").filter(Boolean).slice(-2).join("/"),
+          r.path,
+        ),
+      )
+      .join("") +
+    (query && !repos.length
+      ? '<div class="repo-no-results" role="status">No repositories found.</div>'
+      : "");
+  repoOptions.querySelectorAll("[data-repo]").forEach((button) => {
+    button.onclick = () => {
+      selectedRepo = button.dataset.repo || null;
+      closeRepoDropdown(true);
+      if (path) {
+        location.href = selectedRepo
+          ? "/?repo=" + encodeURIComponent(selectedRepo)
+          : "/";
+        return;
+      }
+      const url = new URL(location.href);
+      if (selectedRepo) url.searchParams.set("repo", selectedRepo);
+      else url.searchParams.delete("repo");
+      history.replaceState(null, "", url);
+      render();
+    };
+  });
+}
+function openRepoDropdown() {
+  repoFilter.value = "";
+  renderRepoOptions();
+  const count = state?.repos.length || 0;
+  document.querySelector("#repo-count").textContent = count + " connected";
+  repoDropdown.hidden = false;
+  repoTrigger.setAttribute("aria-expanded", "true");
+  positionRepoDropdown();
+  repoFilter.focus();
+}
+repoTrigger.onclick = () =>
+  repoDropdown.hidden ? openRepoDropdown() : closeRepoDropdown();
+repoTrigger.onkeydown = (event) => {
+  if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+    event.preventDefault();
+    openRepoDropdown();
+    const options = repoOptions.querySelectorAll("[role=option]");
+    (event.key === "ArrowUp"
+      ? options[options.length - 1]
+      : options[0]
+    )?.focus();
+  }
 };
+repoFilter.oninput = renderRepoOptions;
+repoDropdown.onkeydown = (event) => {
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  // Home and End still edit the search field normally.
+  if (event.target === repoFilter && ["Home", "End"].includes(event.key))
+    return;
+  event.preventDefault();
+  const options = [...repoOptions.querySelectorAll("[role=option]")];
+  const index = options.indexOf(document.activeElement);
+  const next =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? options.length - 1
+        : event.key === "ArrowDown"
+          ? (index + 1) % options.length
+          : (index <= 0 ? options.length : index) - 1;
+  options[next]?.focus();
+};
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !repoDropdown.hidden) {
+    event.preventDefault();
+    closeRepoDropdown(true);
+  }
+});
+document.addEventListener("pointerdown", (event) => {
+  if (!event.target.closest(".repo-switcher")) closeRepoDropdown();
+});
+document
+  .querySelector(".repo-switcher")
+  .addEventListener("focusout", (event) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) closeRepoDropdown();
+  });
+window.addEventListener("resize", positionRepoDropdown);
+document.querySelector("#repo-settings").onclick = () => {
+  closeRepoDropdown();
+  if (path) location.href = "/?view=settings";
+  else {
+    view = "settings";
+    render();
+    document.querySelector("#manage-repos")?.focus();
+  }
+};
+
 refresh();
 setInterval(() => {
   if (view === "session") pollWorkspace();
