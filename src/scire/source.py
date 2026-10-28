@@ -51,6 +51,7 @@ def resolve_anchor(root: Path, value: Anchor | dict) -> dict:
         matches = []
         if path.suffix == ".py":
             tree = ast.parse(text)
+
             def walk(nodes, prefix=""):
                 for node in nodes:
                     if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -58,12 +59,17 @@ def resolve_anchor(root: Path, value: Anchor | dict) -> dict:
                         if name == anchor.symbol:
                             matches.append((node.lineno, node.end_lineno or node.lineno))
                         walk(node.body, name + ".")
+
             walk(tree.body)
         else:
             import re
+
             leaf = anchor.symbol.split(".")[-1]
-            matches = [(i + 1, i + 1) for i, line in enumerate(lines)
-                       if re.search(r"\b(?:class|function|def|fn|func|interface)\s+" + re.escape(leaf) + r"\b", line)]
+            matches = [
+                (i + 1, i + 1)
+                for i, line in enumerate(lines)
+                if re.search(r"\b(?:class|function|def|fn|func|interface)\s+" + re.escape(leaf) + r"\b", line)
+            ]
         if len(matches) != 1:
             raise ValueError(f"Anchor {anchor.id}: symbol is missing or ambiguous; use a literal")
         start, end = matches[0]
@@ -75,13 +81,19 @@ def resolve_anchor(root: Path, value: Anchor | dict) -> dict:
         raise ValueError("Anchor spans more than 200 lines; choose a smaller range")
     if anchor.listing is not None:
         expected = anchor.listing.splitlines()
-        actual = lines[start - 1:end]
+        actual = lines[start - 1 : end]
         if expected != actual:
             raise ValueError(f"Anchor {anchor.id}: code listing does not match source line by line")
     if any(n < start or n > end for n in anchor.key_lines):
         raise ValueError("Key lines must lie inside the highlighted range")
     excerpt_start, excerpt_end = max(1, start - 5), min(len(lines), end + 5)
-    return {**anchor.model_dump(), "start_line": start, "end_line": end,
-            "fingerprint": hashlib.sha256("\n".join(lines[start-1:end]).encode()).hexdigest(),
-            "lines": [{"number": n, "text": lines[n-1], "highlight": start <= n <= end,
-                       "key": n in anchor.key_lines} for n in range(excerpt_start, excerpt_end+1)]}
+    return {
+        **anchor.model_dump(),
+        "start_line": start,
+        "end_line": end,
+        "fingerprint": hashlib.sha256("\n".join(lines[start - 1 : end]).encode()).hexdigest(),
+        "lines": [
+            {"number": n, "text": lines[n - 1], "highlight": start <= n <= end, "key": n in anchor.key_lines}
+            for n in range(excerpt_start, excerpt_end + 1)
+        ],
+    }
