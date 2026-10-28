@@ -17,7 +17,7 @@ scire
 
 The installer verifies the release checksum, installs [uv](https://docs.astral.sh/uv/) and Python when needed, and installs OpenCode 1.18.35 if you don't already have OpenCode 1. It needs curl and Git, uses your home directory, and needs no sudo. Existing provider credentials stay in OpenCode. A Scire-managed OpenCode copy lives in `~/.local/share/scire/bin/`; it does not replace another OpenCode installation. The installer adds Scire to your shell configuration when its executable directory is missing from PATH. Open a new terminal after installation, or run the printed PATH command in your current terminal, then use `scire setup` and `scire`. A piped installer cannot change the environment of the terminal that launched it.
 
-Prefer to inspect the installer first? Download [install.sh](https://github.com/dasarchan/scire/blob/latest/install.sh), read it, then run `sh install.sh`. Set `SCIRE_VERSION=0.1.6` to pin a release. [GitHub CLI](https://cli.github.com/) is optional, needed for GitHub PRs and posting comments.
+Prefer to inspect the installer first? Download [install.sh](https://github.com/dasarchan/scire/blob/latest/install.sh), read it, then run `sh install.sh`. Set `SCIRE_VERSION=0.1.8` to pin a release. [GitHub CLI](https://cli.github.com/) is optional, needed for GitHub PRs and posting comments.
 
 Already have uv and OpenCode? Install directly from the public repository:
 
@@ -29,27 +29,30 @@ Release wheels and source archives are also available on [GitHub Releases](https
 
 On first use, Scire searches your folders for Git repositories and shows a searchable terminal checklist. Use ↑/↓ to move, Space to select and Enter to connect. Existing connections start selected. Then pick an existing OpenCode account or connect a provider, select `provider/model`, and finish a short, one-question-at-a-time onboarding in the browser. Answers survive a page refresh; optional model settings are available later in Settings. Repository paths are never entered in the web app. To connect another account, run `scire setup --connect`. Login, browser OAuth and key entry happen inside OpenCode. Scire does not collect credentials in its web app. Provider and subscription access follow what OpenCode supports.
 
-Run `scire setup` again to change connected repositories. The list includes a folder browser for searching elsewhere without typing a path. Disconnecting a repository keeps its learning history. Discovery reads directory and Git metadata, skips dependency/cache/media folders and symlinks, and has a time and depth limit. It starts no AI work.
+After initial setup, plain `scire` opens the app without scanning or showing the repository picker again. Run `scire setup` explicitly to change connected repositories. The list includes a folder browser for searching elsewhere without typing a path. Disconnecting a repository keeps its learning history. Discovery reads directory and Git metadata, skips dependency/cache/media folders and symlinks, and has a time and depth limit. It starts no AI work.
 
 `scire init` is an alias for `scire setup`. A fast triage model can be selected in Settings; otherwise Scire uses your main model.
 
 ## Use
 
 ```sh
-scire learn
+scire                      # reopen your workspace
+scire learn --minutes 5
+scire learn --minutes 2 --calibrate
 scire review 123
 scire review https://github.com/owner/project/pull/123
 scire review main...feature
-scire ask "How does a request reach its handler?"
 scire map
 scire prefetch
 ```
 
 Commands use the current repository, the only connected repository, or a terminal chooser when several are connected. Scripts can still supply `--repo` explicitly.
 
-The browser is the main workspace. Choose skip, skim, standard or deep for each area before your first lesson. Read a module as soon as it arrives; OpenCode's public progress and elapsed time remain visible while the rest is generated. Click a source reference to pin the code pane, resize it, or step through an identifier's uses.
+Each repository has its own home at `/r/<repo>/`, with a concept mastery card, resumable sessions and a review table. Switch between pull requests and local branches, or use the top-bar repository dropdown. New repositories offer an optional two-minute calibration quiz.
 
-Every question has “I don’t know.” Feedback is immediate. Findings in a review unlock after you answer that module's questions. You can agree, be unsure or disagree and edit the draft. Posting requires a separate explicit action after an exact text and line preview. A moved PR head blocks posting from the old review. Local branch reviews keep drafts local.
+Lessons are one continuous page with questions placed after relevant explanations. Choose a 2-, 5- or 10-minute reading budget before starting; this includes question choices and feedback. Area depth controls (skip, skim, standard, deep) are optional. Start reading as each section arrives; OpenCode’s public progress and elapsed time remain visible while the rest is generated. Click a source reference to pin the code pane, resize it, or step through an identifier's uses.
+
+Every question has “I don’t know.” Feedback is immediate. Findings in a review unlock after you answer that section’s questions. A separate Changes tab shows pinned diff hunks with old/new line numbers. You can agree, be unsure or disagree and edit the draft. Posting requires a separate explicit action after an exact text and line preview. A moved PR head blocks posting from the old review. Local branch reviews keep drafts local.
 
 Maps build automatically from the locally available default branch and refresh when that commit changes. Up to two maps run together. PR snapshots are pinned to their head commit; your checkout and its Git metadata are never changed. PR-only concepts stay hidden from default-branch knowledge views until their anchors appear there.
 
@@ -59,7 +62,7 @@ Maps build automatically from the locally available default branch and refresh w
 
 Scire binds one server to `127.0.0.1` with a random token stored in `server.json` with mode `0600`. A second command reuses it; a changed build restarts it. Ctrl-C stops a foreground server and its agents. Commands that need a server can start it in the background; `scire quit` stops it.
 
-Source sent for inference goes to the provider selected in OpenCode. OpenCode retains its own account and session storage separately. Scire's learner history remains local.
+Source sent for inference goes to the provider selected in OpenCode. OpenCode retains its own account and session storage separately. Scire’s learner history remains local. Mastery is replayed from the per-repository event log using per-choice Bayesian likelihoods, feedback learning, forgetting and code-change discounts. `learner.json` is a rebuildable cache. Areas roll up concept evidence, and prompts receive a compact summary of strengths, uncertainty and misconceptions. Response likelihoods are explicit heuristics, not empirically calibrated measurements; see [the learner model](docs/learner-model.md).
 
 ## Maintenance
 

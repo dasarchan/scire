@@ -149,3 +149,44 @@ def post_comment(repo: dict, review: dict, path: str, line: int, body: str):
     if result.returncode:
         raise ValueError("GitHub rejected the comment; nothing was marked posted.")
     return json.loads(result.stdout)["html_url"]
+
+
+def diff_hunks(patch: str) -> list[dict]:
+    """Parse the already-filtered pinned patch; preserve both line coordinates."""
+    files, file, hunk = [], None, None
+    old = new = 0
+    for row in filtered_diff(patch).splitlines():
+        if row.startswith("diff --git "):
+            file = {"path": "", "old_path": "", "hunks": [], "additions": 0, "deletions": 0}
+            files.append(file)
+            hunk = None
+        elif file is not None and hunk is None and row.startswith("--- "):
+            file["old_path"] = row[6:] if row.startswith("--- a/") else row[4:]
+        elif file is not None and hunk is None and row.startswith("+++ "):
+            file["path"] = row[6:] if row.startswith("+++ b/") else file["old_path"]
+        elif file is not None and row.startswith("@@ "):
+            match = re.match(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@", row)
+            if not match:
+                continue
+            old, new = int(match[1]), int(match[2])
+            hunk = {"header": row, "lines": []}
+            file["hunks"].append(hunk)
+        elif hunk is not None and row[:1] in {"+", "-", " "}:
+            kind = "add" if row.startswith("+") else "remove" if row.startswith("-") else "context"
+            hunk["lines"].append(
+                {
+                    "kind": kind,
+                    "old": None if kind == "add" else old,
+                    "new": None if kind == "remove" else new,
+                    "text": row[1:],
+                }
+            )
+            if kind != "add":
+                old += 1
+            if kind != "remove":
+                new += 1
+            if kind == "add":
+                file["additions"] += 1
+            if kind == "remove":
+                file["deletions"] += 1
+    return [f for f in files if f["path"]]

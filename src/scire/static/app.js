@@ -1,3 +1,5 @@
+import { repoHome } from "./repo-home.js";
+import { changesView } from "./changes.js";
 import { mappingView } from "./mapping.js";
 import { startOnboarding } from "./onboarding.js";
 const token =
@@ -9,6 +11,9 @@ if (token) {
 const main = document.querySelector("#main"),
   content = document.querySelector("#content"),
   modal = document.querySelector("#modal");
+let renderingModule = null,
+  sessionTab = "lesson";
+const renderedMarkdown = new Map();
 let state,
   selectedRepo = new URLSearchParams(location.search).get("repo") || null,
   view = "home",
@@ -22,6 +27,8 @@ let state,
   polling = false,
   editing = false,
   headChecked = 0;
+const repoPath = location.pathname.match(/^\/r\/([a-z0-9]+)\/$/);
+if (repoPath) selectedRepo = repoPath[1];
 const path = location.pathname.match(/^\/w\/([a-z0-9]+)\/([a-z0-9]+)\/$/);
 if (path) {
   selectedRepo = path[1];
@@ -82,9 +89,6 @@ function toast(message) {
   node.hidden = false;
   setTimeout(() => (node.hidden = true), 6500);
 }
-function areaBar(a) {
-  return `<div class="area"><div class="area-top"><span>${escape(a.name)}</span><span>${percent(a.mastery)}%</span></div><div class="bar"><span style="width:${percent(a.mastery)}%"></span></div></div>`;
-}
 function setHeading(title, subtitle = "") {
   main.querySelector(":scope > h1").textContent = title;
   const description = main.querySelector(":scope > .subtitle");
@@ -92,7 +96,10 @@ function setHeading(title, subtitle = "") {
   description.hidden = !subtitle;
 }
 function currentAnchors() {
-  return workspace?.modules.find((m) => m.id === activeModule)?.resolved || {};
+  return (
+    (renderingModule || workspace?.modules.find((m) => m.id === activeModule))
+      ?.resolved || {}
+  );
 }
 function referenceText(text) {
   const refs = currentAnchors();
@@ -109,19 +116,30 @@ function referenceText(text) {
 }
 function inlineReferences(text) {
   const refs = currentAnchors();
-  return escape(text).replace(/\[([a-z0-9_, -]+)\]/g, (match, group) => {
-    const ids = group.split(",").map((x) => x.trim());
-    if (!ids.every((id) => refs[id])) return match;
-    return ids
-      .map(
-        (id) =>
-          `<button class="inline-reference" data-anchor="${escape(id)}">${escape(refs[id].path.split("/").at(-1))}:${refs[id].start_line}</button>`,
-      )
-      .join(" ");
-  });
+  return escape(text)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\(#scire:([a-z0-9_-]+)\)/g, (match, label, id) =>
+      refs[id]
+        ? `<button class="inline-reference" data-anchor="${escape(id)}">${label}</button>`
+        : match,
+    )
+    .replace(/\[([a-z0-9_, -]+)\](?!\()/g, (match, group) => {
+      const ids = group.split(",").map((x) => x.trim());
+      return ids.every((id) => refs[id])
+        ? ids
+            .map(
+              (id) =>
+                `<button class="inline-reference" data-anchor="${escape(id)}">${escape(refs[id].path.split("/").at(-1))}:${refs[id].start_line}</button>`,
+            )
+            .join(" ")
+        : match;
+    });
 }
+
 function markdown(text) {
   text = referenceText(text);
+  if (renderedMarkdown.has(text))
+    return `<div class="prose">${renderedMarkdown.get(text)}</div>`;
   const key = "md-" + Math.random().toString(36).slice(2);
   queueMicrotask(async () => {
     const node = document.getElementById(key);
@@ -133,21 +151,9 @@ function markdown(text) {
         mdCache.set(text, promise);
       }
       const html = await promise;
+      renderedMarkdown.set(text, html);
       if (node.isConnected) {
         node.innerHTML = html;
-        node.querySelectorAll('a[href^="#scire:"]').forEach(
-          (link) =>
-            (link.onclick = (e) => {
-              e.preventDefault();
-              const ref = currentAnchors()[link.getAttribute("href").slice(7)];
-              if (ref) {
-                anchor = ref;
-                pinned = true;
-                keyword = "";
-                renderCode();
-              }
-            }),
-        );
       }
     } catch {
       if (node.isConnected) node.textContent = text;
@@ -388,39 +394,24 @@ function areaTree(map, learnButton = true, parent = null) {
     .filter((a) => (a.parent ?? null) === parent)
     .map(
       (a) =>
-        `<details><summary><span>${escape(a.name)}</span><span class="bar"><span style="width:${percent(a.mastery)}%"></span></span><small>${percent(a.mastery)}%</small></summary><p>${escape(a.summary)}</p>${areaTree(map, learnButton, a.id)}${map.concepts
+        `<details><summary><span>${escape(a.name)}</span><span class="bar"><span style="width:${a.assessed_count ? percent(a.mastery) + "%" : "—"}"></span></span><small>${percent(a.mastery)}%</small></summary><p>${escape(a.summary)}</p>${areaTree(map, learnButton, a.id)}${map.concepts
           .filter((c) => c.parent === a.id)
           .map(
             (c) =>
-              `<div class="concept-leaf"><div><b>${escape(c.name)}</b><p>${percent(c.mastery)}% estimated · ${c.attempts} observations${c.code_changed ? " · code changed" : ""}</p></div>${learnButton ? `<button class="secondary" data-focus="${escape(c.id)}">Learn this →</button>` : ""}</div>`,
+              `<div class="concept-leaf"><div><b>${escape(c.name)}</b><p>${c.attempts ? percent(c.mastery) + "% estimated · " + c.attempts + " answers" : "Not assessed yet"}${c.code_changed ? " · code changed" : ""}</p></div>${learnButton ? `<button class="secondary" data-focus="${escape(c.id)}">Learn this →</button>` : ""}</div>`,
           )
           .join("")}</details>`,
     )
     .join("");
 }
-function chooseRepo(callback) {
-  if (selectedRepo) {
-    callback(selectedRepo);
-    return;
-  }
-  if (state.repos.length === 1) {
-    callback(state.repos[0].id);
-    return;
-  }
-  modal.innerHTML = `<h2>Choose a repository</h2>${state.repos.map((r) => `<div class="row"><button data-choice="${r.id}">${escape(r.name)}</button></div>`).join("")}<div class="dialog-actions"><button class="secondary" data-close>Cancel</button></div>`;
-  modal.showModal();
-  modal.querySelectorAll("[data-choice]").forEach(
-    (b) =>
-      (b.onclick = () => {
-        modal.close();
-        callback(b.dataset.choice);
-      }),
-  );
-  modal.querySelector("[data-close]").onclick = () => modal.close();
-}
-async function openNew(rid, target = "learn", focus = null) {
+async function openNew(rid, target = "learn", focus = null, options = {}) {
   try {
-    const result = await api("sessions", { repo: rid, target, focus });
+    const result = await api("sessions", {
+      repo: rid,
+      target,
+      focus,
+      ...options,
+    });
     location.href = result.url;
   } catch (e) {
     toast(e.message);
@@ -428,8 +419,12 @@ async function openNew(rid, target = "learn", focus = null) {
 }
 function conceptsDialog(rid) {
   const repo = state.repos.find((r) => r.id === rid);
-  modal.innerHTML = `<h2>Choose an idea to explore</h2><div class="knowledge-tree">${areaTree(repo.map)}</div><div class="dialog-actions"><button class="secondary" data-close>Close</button></div>`;
+  modal.innerHTML = `<h2>Concept mastery</h2><p class="quiet">Estimates come from your answers and adjust for time and code changes. Untested concepts remain uncertain.</p><div class="knowledge-tree">${areaTree(repo.map)}</div><div class="dialog-actions"><button class="secondary" id="concept-calibrate">Take calibration</button><button class="secondary" data-close>Close</button></div>`;
   modal.showModal();
+  modal.querySelector("#concept-calibrate").onclick = () => {
+    modal.close();
+    openNew(rid, "learn", null, { calibration: true, minutes: 2 });
+  };
   modal.querySelector("[data-close]").onclick = () => modal.close();
   modal.querySelectorAll("[data-focus]").forEach(
     (b) =>
@@ -439,97 +434,14 @@ function conceptsDialog(rid) {
       }),
   );
 }
-async function loadReviews(repos) {
-  for (const repo of repos) {
-    const node = document.querySelector(`[data-reviews="${repo.id}"]`);
-    if (!node) continue;
-    try {
-      const value = await api("reviews/" + repo.id);
-      if (!node.isConnected) return;
-      node.innerHTML = value.items.length
-        ? value.items
-            .slice(0, 6)
-            .map(
-              (pr) =>
-                `<button class="review-item" data-pr="${pr.number}"><span>#${pr.number} · ${escape(ago(Date.parse(pr.updatedAt) / 1000))}</span><b>${escape(pr.title)}</b>${pr.waiting ? '<span class="pill blue">Waiting on you</span>' : ""}</button>`,
-            )
-            .join("")
-        : `<div class="empty"><p>${escape(value.error || "No open pull requests. Choose a local branch to review a change.")}</p></div>`;
-      node
-        .querySelectorAll("[data-pr]")
-        .forEach((b) => (b.onclick = () => openNew(repo.id, b.dataset.pr)));
-      node.dataset.branches = JSON.stringify(value.branches);
-    } catch (e) {
-      node.textContent = e.message;
-    }
-  }
-}
-function branchDialog() {
-  chooseRepo(async (rid) => {
-    try {
-      const data = await api("reviews/" + rid);
-      modal.innerHTML = `<h2>Review a local change</h2><p>Scire pins the code at its head commit. Your checkout is never changed.</p><label>Branch or revision range</label><input id="review-target" list="branches" placeholder="feature-branch or main...feature"><datalist id="branches">${data.branches.map((b) => `<option value="${escape(b)}">`).join("")}</datalist><div class="dialog-actions"><button class="secondary" data-close>Cancel</button><button class="primary" id="start-review">Prepare review →</button></div>`;
-      modal.showModal();
-      modal.querySelector("[data-close]").onclick = () => modal.close();
-      document.querySelector("#start-review").onclick = () => {
-        const target = document.querySelector("#review-target").value.trim();
-        if (target) {
-          modal.close();
-          openNew(rid, target);
-        }
-      };
-    } catch (e) {
-      toast(e.message);
-    }
-  });
-}
-function askForm(session = null) {
-  return `<form class="ask" id="ask-form"><textarea name="question" rows="1" placeholder="What would you like to understand?" aria-label="Ask about the codebase"></textarea><button class="primary">Explore question →</button></form>`;
-}
-function bindAsk(session = null) {
-  const form = document.querySelector("#ask-form");
-  if (!form) return;
-  form.onsubmit = (e) => {
-    e.preventDefault();
-    const question = form.elements.question.value.trim();
-    if (!question) return;
-    chooseRepo(async (rid) => {
-      const button = form.querySelector("button");
-      button.disabled = true;
-      button.textContent = "Finding the right approach…";
-      try {
-        const result = await api("ask", { repo: rid, session, question });
-        if (result.topic.route === "quick") {
-          if (session) await pollWorkspace(true);
-          else {
-            const box = document.createElement("div");
-            box.innerHTML =
-              renderTopics({
-                repo: rid,
-                id: result.session,
-                topics: [result.topic],
-              }) +
-              `<div class="inline-actions"><button class="secondary" data-open-topic>Continue this topic →</button></div>`;
-            form.nextElementSibling.after(box);
-            box.querySelector("[data-open-topic]").onclick = () =>
-              (location.href = `/w/${rid}/${result.session}/`);
-            bindTopicRefs();
-          }
-          button.disabled = false;
-          button.textContent = "Explore question →";
-          form.elements.question.value = "";
-        } else location.href = `/w/${rid}/${result.session}/`;
-      } catch (e) {
-        toast(e.message);
-        button.disabled = false;
-        button.textContent = "Explore question →";
-      }
-    });
-  };
-  autosize();
-}
 function render() {
   if (!state) return;
+  if (!selectedRepo || !state.repos.some((r) => r.id === selectedRepo)) {
+    const saved = localStorage.getItem("scire-repo");
+    selectedRepo =
+      state.repos.find((r) => r.id === saved)?.id || state.repos[0]?.id || null;
+  }
+  if (selectedRepo) localStorage.setItem("scire-repo", selectedRepo);
   document.body.classList.toggle("onboarding-active", !state.profile.setup);
   document
     .querySelectorAll("[data-view]")
@@ -639,105 +551,57 @@ function render() {
     autosize();
     return;
   }
-  setHeading("Overview");
-  const sessions = state.sessions.filter(
-    (s) => !selectedRepo || s.repo === selectedRepo,
-  );
-  content.innerHTML = `<div class="grid"><section class="card"><div class="card-heading"><h2>Learn</h2></div>${repos.map((r) => `<div><h3>${escape(r.name)} <span class="pill ${r.map.status === "ready" ? "blue" : ""}">${escape(r.map.status || "not mapped")}</span></h3><p><small>${r.map.concepts.length} concepts · ${r.map.areas.length} areas</small></p>${r.map.areas.slice(0, 5).map(areaBar).join("") || '<div class="empty"><p>Build a map to start learning.</p></div>'}${["working", "queued"].includes(r.map.status) ? `<button class="map-activity secondary" data-map-view="${r.id}"><i class="pulse"></i>Mapping in progress · View live activity →</button>` : ""}${r.map.error ? `<div class="error">${escape(r.map.error)}</div>` : ""}<div class="card-footer"><button class="secondary" data-concepts="${r.id}" ${!r.map.concepts.length ? "disabled" : ""}>View concepts</button>${r.map.status === "ready" ? `<button class="primary" data-learn="${r.id}">Start learning →</button>` : `<button class="${r.map.status === "working" ? "secondary" : "primary"}" data-map="${r.id}" ${r.map.status === "working" ? "disabled" : ""}>${r.map.status === "working" ? "Mapping…" : "Build map →"}</button>`}</div></div>`).join('<hr style="border:0;border-top:1px solid var(--line);margin:25px 0">') || '<p class="empty">Run scire setup in your terminal to choose repositories.</p>'}</section><section class="card"><div class="card-heading"><h2>Review</h2></div>${repos.map((r) => `<h3>${escape(r.name)}</h3><div data-reviews="${r.id}" class="review-list"><p class="quiet">Loading pull requests…</p></div>`).join("")}<div class="card-footer"><button class="secondary" id="branch-review">Choose a branch ↗</button></div></section></div>${askForm()}<section class="card sessions"><div class="card-heading"><h2>Recent sessions</h2></div>${
-    sessions
-      .slice(0, 10)
-      .map(
-        (s) =>
-          `<div class="row"><div><h3>${escape(s.title)}</h3><p>${escape(state.repos.find((r) => r.id === s.repo)?.name)} · ${s.target === "learn" ? "Learning" : "Review"} · ${escape(s.status)} · ${ago(s.updated_at)}</p></div><button class="secondary" data-session="${s.repo}/${s.id}">Continue →</button></div>`,
-      )
-      .join("") || '<div class="empty">No sessions yet.</div>'
-  }</section>`;
-  content
-    .querySelectorAll("[data-learn]")
-    .forEach((b) => (b.onclick = () => openNew(b.dataset.learn)));
-  content
-    .querySelectorAll("[data-concepts]")
-    .forEach((b) => (b.onclick = () => conceptsDialog(b.dataset.concepts)));
-  content
-    .querySelectorAll("[data-map-view]")
-    .forEach((b) => (b.onclick = () => showMapping(b.dataset.mapView)));
-  content.querySelectorAll("[data-map]").forEach(
-    (b) =>
-      (b.onclick = async () => {
+  const repo = state.repos.find((r) => r.id === selectedRepo);
+  setHeading(repo?.name || "Repositories");
+  if (repo && !path && view === "home")
+    history.replaceState(null, "", "/r/" + repo.id + "/");
+  repoHome(content, {
+    repo,
+    sessions: state.sessions,
+    escape,
+    percent,
+    ago,
+    api,
+    actions: {
+      concepts: () => conceptsDialog(repo.id),
+      learn: () => openNew(repo.id),
+      calibrate: () =>
+        openNew(repo.id, "learn", null, { calibration: true, minutes: 2 }),
+      skipCalibration: async () => {
+        await api(`repos/${repo.id}/onboarding`, { calibration: "skipped" });
+        await refresh();
+      },
+      review: (target) => openNew(repo.id, target),
+      activity: () => showMapping(repo.id),
+      build: async () => {
         try {
-          b.disabled = true;
-          await api(`maps/${b.dataset.map}/build`, {});
-          mappingRepo = b.dataset.map;
+          await api(`maps/${repo.id}/build`, {});
+          mappingRepo = repo.id;
           view = "mapping";
           await refresh();
         } catch (e) {
           toast(e.message);
         }
-      }),
-  );
-  content
-    .querySelectorAll("[data-session]")
-    .forEach(
-      (b) =>
-        (b.onclick = () => (location.href = "/w/" + b.dataset.session + "/")),
-    );
-  document.querySelector("#branch-review").onclick = branchDialog;
-  bindAsk();
-  loadReviews(repos);
+      },
+    },
+  });
 }
-function renderTopics(s) {
-  return s.topics
-    .map((t, i) =>
-      t.answer
-        ? `<section class="topic-answer"><h3>${escape(t.question)}</h3>${markdown(t.answer)}<div class="anchor-links">${(t.refs || []).map((a, j) => `<button data-topic-source="${s.repo}/${s.id}/${i}/${j}">${escape(a.path)} ↗</button>`).join("")}</div></section>`
-        : "",
-    )
-    .join("");
-}
-function bindTopicRefs() {
-  document.querySelectorAll("[data-topic-source]").forEach(
-    (b) =>
-      (b.onclick = async () => {
-        try {
-          const [rid, sid, i, j] = b.dataset.topicSource.split("/");
-          const ref = await api(
-            `sessions/${rid}/${sid}/topics/${i}/source/${j}`,
-          );
-          if (document.querySelector("#code-pane")) {
-            anchor = ref;
-            pinned = true;
-            keyword = "";
-            renderCode();
-          } else {
-            modal.innerHTML = `<h2>${escape(ref.path)}</h2><p>Lines ${ref.start_line}–${ref.end_line}</p><pre class="source-preview">${ref.lines.map((l) => escape(l.number + "  " + l.text)).join("\n")}</pre><div class="dialog-actions"><button class="secondary" data-close>Close</button></div>`;
-            modal.showModal();
-            modal.querySelector("[data-close]").onclick = () => modal.close();
-          }
-        } catch (e) {
-          toast(e.message);
-        }
-      }),
-  );
-}
+
 function renderDepth() {
   const s = workspace;
-  content.innerHTML = `${renderTopics(s)}<section class="card depth-form"><h2>Choose how deep to go.</h2><p>Skip areas you do not need, skim familiar ones, or take a deeper look. Your answers will refine the learning plan.</p><form id="depth-form"><div class="depth-list">${s.map.areas
-    .map(
-      (a) =>
-        `<div class="row"><div><h3>${escape(a.name)}</h3><p>${escape(a.summary)}</p><small>${percent(a.mastery)}% estimated understanding</small></div><select name="${escape(a.id)}" aria-label="Depth for ${escape(a.name)}">${["skip", "skim", "standard", "deep"].map((d) => `<option value="${d}" ${(s.depths[a.id] || "standard") === d ? "selected" : ""}>${d[0].toUpperCase() + d.slice(1)}</option>`).join("")}</select></div>`,
-    )
-    .join(
-      "",
-    )}</div><div class="card-footer"><small>Start small. You can go deeper later.</small><button class="primary">${s.review ? "Prepare review" : "Start learning"} →</button></div></form></section>`;
+  content.innerHTML = `${s.review ? sessionTabs(s) : ""}<section class="card depth-form"><h2>${s.review ? "Set your review budget" : "Make this lesson yours"}</h2><p>Choose how much time to spend. Scire includes reading, code and questions in that budget.</p><form id="depth-form"><div class="lesson-preferences"><label>Reading budget<select name="minutes" aria-label="Reading budget">${[2, 5, 10].map((n) => `<option value="${n}" ${n === (s.reading_minutes || 5) ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label>${!s.review ? `<label class="calibration-option"><input type="checkbox" name="calibration" ${s.calibration ? "checked" : ""}><span><b>Start with a calibration quiz</b><small>Sample what you know before choosing a focus. Optional.</small></span></label>` : ""}</div><details class="area-depths"><summary>Adjust depth by area</summary><div class="depth-list">${s.map.areas.map((a) => `<div class="row"><div><h3>${escape(a.name)}</h3><p>${escape(a.summary)}</p></div><select name="area:${escape(a.id)}" aria-label="Depth for ${escape(a.name)}">${["skip", "skim", "standard", "deep"].map((d) => `<option value="${d}" ${(s.depths[a.id] || "standard") === d ? "selected" : ""}>${d[0].toUpperCase() + d.slice(1)}</option>`).join("")}</select></div>`).join("")}</div></details><div class="card-footer"><span>One continuous lesson. Your answers are saved as you go.</span><button class="primary">${s.review ? "Prepare review" : "Start learning"} →</button></div></form></section>`;
+  bindSessionTabs();
   document.querySelector("#depth-form").onsubmit = async (e) => {
     e.preventDefault();
+    const form = e.target;
+    const depths = Object.fromEntries(
+      s.map.areas.map((a) => [a.id, form.elements["area:" + a.id].value]),
+    );
     try {
-      const depths = Object.fromEntries(new FormData(e.target));
-      for (const a of s.map.areas)
-        if (a.parent && !depths[a.id])
-          depths[a.id] = depths[a.parent] || "standard";
       await api(`sessions/${s.repo}/${s.id}/start`, {
         depths,
+        minutes: Number(form.elements.minutes.value),
+        calibration: !!form.elements.calibration?.checked,
         focus: s.pending_focus || s.focus,
       });
       await pollWorkspace(true);
@@ -746,6 +610,21 @@ function renderDepth() {
     }
   };
 }
+function sessionTabs(s) {
+  return s.review
+    ? `<div class="session-tabs" role="tablist" aria-label="Review view"><button role="tab" data-session-tab="lesson" aria-selected="${sessionTab === "lesson"}">Lesson</button><button role="tab" data-session-tab="changes" aria-selected="${sessionTab === "changes"}">Changes <span>${s.review.files?.length || ""}</span></button></div>`
+    : "";
+}
+function bindSessionTabs() {
+  content.querySelectorAll("[data-session-tab]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        sessionTab = b.dataset.sessionTab;
+        renderWorkspace();
+      }),
+  );
+}
+
 function renderDiagram(value) {
   if (!value?.nodes?.length) return "";
   const nodes = value.nodes,
@@ -754,11 +633,11 @@ function renderDiagram(value) {
   const positions = Object.fromEntries(
     nodes.map((n, i) => [n.id, { x: 270, y: 45 + i * 85 }]),
   );
-  return `<div class="diagram-box"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Flow diagram"><defs><marker id="arrow-${escape(activeModule)}" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#697c96"/></marker></defs>${value.edges
+  return `<div class="diagram-box"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Flow diagram"><defs><marker id="arrow-${escape(renderingModule?.id || activeModule)}" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#697c96"/></marker></defs>${value.edges
     .map((e) => {
       const a = positions[e.from],
         b = positions[e.to];
-      return `<path d="M${a.x},${a.y + 20} L${b.x},${b.y - 22}" fill="none" stroke="#697c96" marker-end="url(#arrow-${escape(activeModule)})"/>${e.label ? `<text x="${a.x + 15}" y="${(a.y + b.y) / 2}" fill="#919aa9" font-size="10">${escape(e.label)}</text>` : ""}`;
+      return `<path d="M${a.x},${a.y + 20} L${b.x},${b.y - 22}" fill="none" stroke="#697c96" marker-end="url(#arrow-${escape(renderingModule?.id || activeModule)})"/>${e.label ? `<text x="${a.x + 15}" y="${(a.y + b.y) / 2}" fill="#919aa9" font-size="10">${escape(e.label)}</text>` : ""}`;
     })
     .join("")}${nodes
     .map((n) => {
@@ -778,83 +657,117 @@ function renderFinding(f, module) {
   };
   return `<section class="finding" data-finding="${escape(f.key)}"><div class="card-heading"><h3>${escape(f.title)}</h3><span class="pill">${escape(f.severity)}</span></div><div class="finding-label">Failure scenario</div><p>${escape(f.scenario)}</p><div class="finding-label">Evidence and impact</div><p>${escape(f.evidence)}</p><p>${escape(f.impact)}</p><button class="secondary" data-anchor="${escape(f.ref)}">Inspect evidence ↗</button><div class="stance">${["agree", "unsure", "disagree"].map((x) => `<button class="${draft.stance === x ? "active" : ""}" data-stance="${x}" data-fid="${escape(f.key)}">${x[0].toUpperCase() + x.slice(1)}</button>`).join("")}</div><label>Comment draft — editable, not posted</label><textarea data-draft="${escape(f.key)}">${escape(draft.body)}</textarea><div class="card-footer"><small>${workspace.posted?.[f.key] ? "Posted to GitHub" : "Nothing leaves Scire until you explicitly post."}</small><button class="secondary" data-preview="${escape(f.key)}">Preview exact comment →</button></div></section>`;
 }
+function lessonSection(m) {
+  renderingModule = m;
+  let html;
+  if (m.status !== "ready")
+    html = `<article class="continuous-module preview-card" id="lesson-${escape(m.id)}" data-lesson-module="${escape(m.id)}"><h2>${escape(m.title)}</h2><p>${escape(m.summary)}</p><small>Preparing code references and questions…</small></article>`;
+  else {
+    const questions = (after) =>
+      m.questions
+        .map((q, i) =>
+          (q.after || ["flow", "key_code", "pitfalls"][i % 3]) === after
+            ? renderQuestion(q, i)
+            : "",
+        )
+        .join("");
+    html = `<article class="continuous-module" id="lesson-${escape(m.id)}" data-lesson-module="${escape(m.id)}"><div class="module-title"><h2>${escape(m.title)}</h2><span class="pill">ROUND ${m.round}</span></div><div class="module-summary">${markdown(m.summary)}</div><section class="lesson-section"><h3>Why it exists</h3>${markdown(m.why)}</section>${questions("why")}<section class="lesson-section"><h3>Follow the flow</h3><ol>${m.flow.map((x) => `<li>${inlineReferences(x)}</li>`).join("")}</ol></section>${renderDiagram(m.diagram)}${questions("flow")}<section class="lesson-section"><h3>The key code</h3>${markdown(m.key_code)}<div class="anchor-links">${m.anchors.map((a) => `<button data-anchor="${escape(a.id)}">${escape(a.path)} ↗</button>`).join("")}</div></section>${questions("key_code")}<section class="lesson-section"><h3>What to watch for</h3><ul>${m.pitfalls.map((x) => `<li>${inlineReferences(x)}</li>`).join("")}</ul></section>${questions("pitfalls")}${workspace.review ? (m.findings_unlocked ? `<section class="lesson-section"><h3>Proposed review findings</h3>${m.findings.map((f) => renderFinding(f, m)).join("") || '<p class="quiet">No supported findings were proposed for this section.</p>'}</section>` : '<div class="findings-lock">Findings unlock after you answer this section’s questions.</div>') : ""}</article>`;
+  }
+  renderingModule = null;
+  return html;
+}
+function moduleFor(node) {
+  const id = node.closest("[data-lesson-module]")?.dataset.lessonModule;
+  return workspace.modules.find((m) => m.id === (id || activeModule));
+}
+function showAnchor(node, id) {
+  const owner = moduleFor(node);
+  if (!owner?.resolved?.[id]) return;
+  activeModule = owner.id;
+  anchor = owner.resolved[id];
+  pinned = true;
+  keyword = "";
+  renderCode();
+}
+content.addEventListener("click", (e) => {
+  const link = e.target.closest('a[href^="#scire:"]');
+  if (link) {
+    e.preventDefault();
+    showAnchor(link, link.getAttribute("href").slice(7));
+  }
+});
 function renderWorkspace() {
   if (!workspace) {
-    content.innerHTML =
-      '<div class="activity-card"><p>Opening your session…</p></div>';
+    content.innerHTML = "<p>Opening your session…</p>";
     return;
   }
   const s = workspace;
   setHeading(
     s.title,
-    s.review
-      ? `Pinned at ${s.review.head.slice(0, 10)} · Review at your own pace.`
-      : "",
+    s.review ? `Pinned at ${s.review.head.slice(0, 10)}` : "",
   );
-  if (!s.started_learning) {
-    renderDepth();
-    bindTopicRefs();
+  if (s.review && sessionTab === "changes") {
+    content.innerHTML = sessionTabs(s) + '<div id="changes-content"></div>';
+    bindSessionTabs();
+    changesView(content.querySelector("#changes-content"), s, api, escape);
     return;
   }
-  const modules = s.modules.sort(
+  if (!s.started_learning) {
+    renderDepth();
+    return;
+  }
+  const modules = [...s.modules].sort(
     (a, b) => a.round - b.round || a.index - b.index,
   );
   if (!activeModule || !modules.some((m) => m.id === activeModule))
     activeModule =
-      modules.find((m) => m.status === "ready" && m.round === s.round)?.id ||
-      modules.at(-1)?.id;
-  const current = modules.find((m) => m.id === activeModule);
+      modules.find((m) => m.status === "ready")?.id || modules[0]?.id;
   document.querySelector("#session-nav").innerHTML =
-    `<div class="nav-label">This session</div>${modules.map((m) => `<button class="${m.id === activeModule ? "active" : ""}" data-module="${escape(m.id)}"><small>${m.status === "ready" && m.questions.every((q) => s.answers[q.key]) ? "✓" : String((m.index || 0) + 1).padStart(2, "0")}</small>${escape(m.title)}${m.status === "preview" ? " · preparing" : ""}</button>`).join("")}`;
+    `<div class="nav-label">On this page</div>${modules.map((m) => `<button class="${m.id === activeModule ? "active" : ""}" data-module="${escape(m.id)}"><small>${m.status === "ready" && m.questions.every((q) => s.answers[q.key]) ? "✓" : String((m.index || 0) + 1).padStart(2, "0")}</small>${escape(m.title)}</button>`).join("")}`;
   document.querySelectorAll("[data-module]").forEach(
     (b) =>
       (b.onclick = () => {
         activeModule = b.dataset.module;
-        if (!pinned) anchor = null;
-        renderWorkspace();
+        document.querySelector("#lesson-" + activeModule)?.scrollIntoView({
+          behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "instant"
+            : "smooth",
+          block: "start",
+        });
+        document
+          .querySelectorAll("[data-module]")
+          .forEach((n) => n.classList.toggle("active", n === b));
+        const m = modules.find((m) => m.id === activeModule);
+        if (!pinned && m?.resolved) {
+          anchor = m.resolved[m.anchors[0].id];
+          renderCode();
+        }
       }),
   );
-  const banner = s.head_moved
-    ? '<div class="head-banner">The PR head has changed. You are reading the pinned revision; refresh the review before posting comments.</div>'
+  const busy = ["working", "queued"].includes(s.status);
+  const activity = busy
+    ? `<div class="activity-card"><p><i class="pulse"></i>${s.status === "queued" ? "Queued" : "Preparing your lesson"} · ${Math.max(0, Math.floor(Date.now() / 1000 - (s.round_started_at || Date.now() / 1000)))}s</p>${s.activity
+        .slice(-2)
+        .map((a) => `<p>${escape(a.text)}</p>`)
+        .join(
+          "",
+        )}<button class="secondary" id="cancel-round">Stop this run</button></div>`
     : "";
-  const activity =
-    s.status === "working" || s.status === "queued"
-      ? `<div class="activity-card"><p><i class="pulse"></i>${escape(s.status === "queued" ? "Queued" : "OpenCode is working")} · ${Math.max(0, Math.floor(Date.now() / 1000 - (s.round_started_at || Date.now() / 1000)))}s elapsed</p>${s.activity
-          .slice(-4)
-          .map((a) => `<p>${escape(a.text)}</p>`)
-          .join(
-            "",
-          )}<button class="secondary" id="cancel-round">Stop this run</button></div>`
-      : "";
-  let body = "";
-  if (current?.status === "ready") {
-    body = `<div class="module-title"><h2>${escape(current.title)}</h2><span class="pill">ROUND ${current.round}</span></div><div class="module-summary">${markdown(current.summary)}</div><section class="lesson-section"><h3>Why it exists</h3>${markdown(current.why)}</section><section class="lesson-section"><h3>Follow the flow</h3><ol>${current.flow.map((x) => `<li>${inlineReferences(x)}</li>`).join("")}</ol></section>${renderDiagram(current.diagram)}<section class="lesson-section"><h3>The key code</h3>${markdown(current.key_code)}<div class="anchor-links">${current.anchors.map((a) => `<button data-anchor="${escape(a.id)}">${escape(a.path)} ↗</button>`).join("")}</div></section><section class="lesson-section"><h3>What to watch for</h3><ul>${current.pitfalls.map((x) => `<li>${inlineReferences(x)}</li>`).join("")}</ul></section><section class="quiz-section"><h2>Check your working model.</h2><p><small>Answer once, then see feedback immediately. “I don’t know” is useful evidence.</small></p>${current.questions.map(renderQuestion).join("")}</section>${s.review ? (current.findings_unlocked ? `<section class="lesson-section"><h2>Proposed review findings</h2>${current.findings.map((f) => renderFinding(f, current)).join("") || "<p>No supported findings were proposed for this module. This is not a safety certification.</p>"}</section>` : '<div class="findings-lock">Review findings unlock after you answer this module’s questions.</div>') : ""}`;
-  } else if (current) {
-    body = `<div class="preview-card"><h2>${escape(current.title)}</h2><p>${escape(current.summary)}</p><p class="quiet">The agent is validating its code anchors and questions. This module will open as soon as it is ready.</p></div>`;
-  } else {
-    body =
-      '<div class="preview-card"><h2>Finding the right starting point.</h2><p>The first module appears as soon as OpenCode writes and validates it. You do not have to wait for the whole round.</p></div>';
-  }
-  const retryable = ["error", "cancelled", "interrupted"].includes(s.status);
-  const error = retryable
-    ? `<div class="error">${escape(s.error || "This run stopped. Your validated modules and answers are saved.")} <button class="secondary" id="retry-round">Try another round →</button></div>`
+  const error = ["error", "cancelled", "interrupted"].includes(s.status)
+    ? `<div class="error">${escape(s.error || "This run stopped. Your lessons and answers are saved.")} <button class="secondary" id="retry-round">Retry →</button></div>`
     : "";
   const oldScroll = document.querySelector(".code-lines")?.scrollTop || 0;
-  content.innerHTML = `${banner}${error}<div class="workspace-status">Round ${s.round} · ${Number(s.cost).toFixed(3)} USD reported · ${Math.round(s.seconds)}s total agent time</div><div class="workspace" style="--pane-width:${Number(localStorage.getItem("scire-pane-width")) || 390}px"><div class="lesson-body">${activity}${body}${s.complete ? '<div class="next-footer"><div><h3>Round complete.</h3><small>Choose what to understand next.</small></div><button class="primary" id="what-next">What next →</button></div>' : ""}${renderTopics(s)}${askForm(s.id)}</div><div class="code-splitter" role="separator" aria-label="Resize code pane" aria-orientation="vertical" tabindex="0"></div><aside class="code-pane" id="code-pane"></aside></div>`;
-  if (current?.status === "ready" && !anchor && !pinned)
+  content.innerHTML = `${sessionTabs(s)}${s.head_moved ? '<div class="head-banner">The PR head has changed. This review is pinned to an earlier revision.</div>' : ""}${error}<div class="workspace-status"><span>${s.reading?.minutes || s.reading_minutes || 5} min read & questions · ${Object.keys(s.answers).length}/${modules.reduce((n, m) => n + (m.questions?.length || 0), 0)} answered</span><span>${Number(s.cost).toFixed(3)} USD reported · ${Math.round(s.seconds)}s agent time</span></div><div class="workspace continuous-workspace" style="--pane-width:${Number(localStorage.getItem("scire-pane-width")) || 390}px"><div class="lesson-body">${modules.length ? modules.map(lessonSection).join("") : '<div class="preview-card"><h2>Preparing the first section</h2><p>You can begin reading as soon as the first section arrives.</p></div>'}${activity}${s.complete ? '<div class="next-footer"><div><h3>Round complete.</h3><small>Choose what to understand next.</small></div><button class="primary" id="what-next">What next →</button></div>' : ""}</div><div class="code-splitter" role="separator" aria-label="Resize code pane" aria-orientation="vertical" tabindex="0"></div><aside class="code-pane" id="code-pane"></aside></div>`;
+  const current = modules.find((m) => m.id === activeModule);
+  if (!anchor && !pinned && current?.resolved)
     anchor = current.resolved[current.anchors[0].id];
   renderCode();
-  const box = document.querySelector(".code-lines");
-  if (box) box.scrollTop = oldScroll;
-  content.querySelectorAll("[data-anchor]").forEach(
-    (b) =>
-      (b.onclick = () => {
-        anchor = current.resolved[b.dataset.anchor];
-        pinned = true;
-        keyword = "";
-        renderCode();
-      }),
-  );
+  if (document.querySelector(".code-lines"))
+    document.querySelector(".code-lines").scrollTop = oldScroll;
+  bindSessionTabs();
+  content
+    .querySelectorAll("[data-anchor]")
+    .forEach((b) => (b.onclick = () => showAnchor(b, b.dataset.anchor)));
   content.querySelectorAll("[data-answer]").forEach(
     (b) =>
       (b.onclick = async () => {
@@ -871,24 +784,25 @@ function renderWorkspace() {
         }
       }),
   );
-  if (document.querySelector("#cancel-round"))
-    document.querySelector("#cancel-round").onclick = async () => {
+  const cancel = document.querySelector("#cancel-round");
+  if (cancel)
+    cancel.onclick = async () => {
       await api(`sessions/${s.repo}/${s.id}/cancel`, {});
       await pollWorkspace(true);
     };
-  if (document.querySelector("#what-next"))
-    document.querySelector("#what-next").onclick = nextDialog;
+  const next = document.querySelector("#what-next");
+  if (next) next.onclick = nextDialog;
   content.querySelectorAll("[data-draft]").forEach((t) => {
     t.onfocus = () => (editing = true);
     t.onblur = async () => {
       editing = false;
-      await saveDraft(current.id, t.dataset.draft, t.value);
+      await saveDraft(moduleFor(t).id, t.dataset.draft, t.value);
     };
     t.oninput = () => {
       autosize();
       clearTimeout(t.saveTimer);
       t.saveTimer = setTimeout(
-        () => saveDraft(current.id, t.dataset.draft, t.value),
+        () => saveDraft(moduleFor(t).id, t.dataset.draft, t.value),
         500,
       );
     };
@@ -896,39 +810,39 @@ function renderWorkspace() {
   content.querySelectorAll("[data-stance]").forEach(
     (b) =>
       (b.onclick = async () => {
-        const area = content.querySelector(`[data-draft="${b.dataset.fid}"]`);
-        await saveDraft(
-          current.id,
-          b.dataset.fid,
-          area.value,
-          b.dataset.stance,
-        );
+        const m = moduleFor(b),
+          area = b
+            .closest("[data-lesson-module]")
+            .querySelector(`[data-draft="${b.dataset.fid}"]`);
+        await saveDraft(m.id, b.dataset.fid, area.value, b.dataset.stance);
         await pollWorkspace(true);
       }),
   );
   content.querySelectorAll("[data-preview]").forEach(
     (b) =>
       (b.onclick = async () => {
-        const t = content.querySelector(`[data-draft="${b.dataset.preview}"]`);
-        await saveDraft(current.id, b.dataset.preview, t.value);
-        previewComment(current.id, b.dataset.preview);
+        const m = moduleFor(b),
+          t = b
+            .closest("[data-lesson-module]")
+            .querySelector(`[data-draft="${b.dataset.preview}"]`);
+        await saveDraft(m.id, b.dataset.preview, t.value);
+        previewComment(m.id, b.dataset.preview);
       }),
   );
-  if (document.querySelector("#retry-round"))
-    document.querySelector("#retry-round").onclick = async () => {
+  const retry = document.querySelector("#retry-round");
+  if (retry)
+    retry.onclick = async () => {
       try {
         await api(`sessions/${s.repo}/${s.id}/start`, {});
-        activeModule = null;
         await pollWorkspace(true);
       } catch (e) {
         toast(e.message);
       }
     };
-  bindTopicRefs();
   bindResize();
-  bindAsk(s.id);
   autosize();
 }
+
 function renderCode() {
   const pane = document.querySelector("#code-pane");
   if (!pane) return;
@@ -1092,7 +1006,10 @@ async function pollWorkspace(force = false) {
   polling = true;
   try {
     const value = await api(`sessions/${path[1]}/${path[2]}`);
-    const signature = JSON.stringify(value);
+    const signature = JSON.stringify({
+      ...value,
+      map: value.started_learning ? undefined : value.map,
+    });
     workspace = value;
     if (force || signature !== lastSignature) {
       if (!editing) {
@@ -1125,10 +1042,16 @@ document.querySelectorAll("[data-view]").forEach(
   (b) =>
     (b.onclick = () => {
       if (path) {
-        location.href = "/?view=" + b.dataset.view;
+        location.href = "/r/" + selectedRepo + "/?view=" + b.dataset.view;
         return;
       }
       view = b.dataset.view;
+      if (selectedRepo)
+        history.replaceState(
+          null,
+          "",
+          "/r/" + selectedRepo + "/" + (view === "home" ? "" : "?view=" + view),
+        );
       document
         .querySelectorAll("[data-view]")
         .forEach((x) => x.classList.toggle("selected", x === b));
@@ -1138,7 +1061,7 @@ document.querySelectorAll("[data-view]").forEach(
 const queryView = new URLSearchParams(location.search).get("view");
 if (queryView) view = queryView;
 document.querySelector("#profile-badge").onclick = () => {
-  if (path) location.href = "/?view=settings";
+  if (path) location.href = "/r/" + selectedRepo + "/?view=settings";
   else {
     view = "settings";
     render();
@@ -1183,9 +1106,6 @@ function renderRepoOptions() {
   const option = (id, name, detail, fullPath = detail) =>
     `<button type="button" role="option" tabindex="-1" class="repo-option" aria-selected="${(selectedRepo || "") === id}" data-repo="${escape(id)}">${icon}<span class="repo-option-copy"><strong>${escape(name)}</strong><small title="${escape(fullPath)}">${escape(detail)}</small></span><svg class="repo-checkmark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg></button>`;
   repoOptions.innerHTML =
-    (!query
-      ? option("", "All repositories", "Your connected workspaces")
-      : "") +
     repos
       .map((r) =>
         option(
@@ -1202,18 +1122,16 @@ function renderRepoOptions() {
   repoOptions.querySelectorAll("[data-repo]").forEach((button) => {
     button.onclick = () => {
       selectedRepo = button.dataset.repo || null;
-      if (view === "mapping") view = "home";
+      localStorage.setItem("scire-repo", selectedRepo);
+      view = "home";
       closeRepoDropdown(true);
       if (path) {
         location.href = selectedRepo
-          ? "/?repo=" + encodeURIComponent(selectedRepo)
+          ? "/r/" + encodeURIComponent(selectedRepo) + "/"
           : "/";
         return;
       }
-      const url = new URL(location.href);
-      if (selectedRepo) url.searchParams.set("repo", selectedRepo);
-      else url.searchParams.delete("repo");
-      history.replaceState(null, "", url);
+      history.replaceState(null, "", "/r/" + selectedRepo + "/");
       render();
     };
   });
@@ -1277,7 +1195,7 @@ document
 window.addEventListener("resize", positionRepoDropdown);
 document.querySelector("#repo-settings").onclick = () => {
   closeRepoDropdown();
-  if (path) location.href = "/?view=settings";
+  if (path) location.href = "/r/" + selectedRepo + "/?view=settings";
   else {
     view = "settings";
     render();
@@ -1293,9 +1211,14 @@ setInterval(() => {
   else if (document.querySelector("#repo-connections"))
     refreshRepositoryConnections().catch(() => {});
   else if (
-    state?.repos.some((r) =>
-      ["working", "missing", "queued"].includes(r.map.status),
-    ) &&
+    (state?.repos.some(
+      (r) =>
+        r.id === selectedRepo && ["working", "queued"].includes(r.map.status),
+    ) ||
+      state?.sessions.some(
+        (s) =>
+          s.repo === selectedRepo && ["working", "queued"].includes(s.status),
+      )) &&
     !editing
   )
     refresh();

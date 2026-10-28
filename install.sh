@@ -2,7 +2,7 @@
 # Scire installer for macOS and Linux. No sudo or provider credentials required.
 set -eu
 ORIGINAL_PATH=$PATH
-VERSION=${SCIRE_VERSION:-0.1.7}
+VERSION=${SCIRE_VERSION:-0.1.8}
 OPENCODE_VERSION=1.18.35
 RELEASE=https://github.com/dasarchan/scire/releases/download/v$VERSION
 fail() { printf '\nScire: %s\n' "$*" >&2; exit 1; }

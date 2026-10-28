@@ -69,3 +69,10 @@ The real Flask connection appeared read-only in Settings. Chrome verified that s
 
 - 63 tests passed, including Chrome checks. New tests cover response likelihood ratios, cache deletion/tampering, replay deduplication, forgetting, code drift, legacy evidence import, area rollups, bounded prompt summaries and CLI reopening.
 - A real two-minute Flask calibration produced one validated section and two questions in 39.202 seconds, after one successful shortening pass; subscription cost reported $0. Budget validation runs before streaming publication so oversized sections remain repairable.
+
+## Continuous repository workspaces — v0.1.8 (2026-10-28)
+
+- 68 checks passed across the full suite and the final diff-parser regression, including five running Chrome app tests. Browser checks cover per-repo homes, scoped session cards, the searchable repository dropdown, PR/branch tables, optional calibration, multiple continuous sections, question-to-section code references, immediate answers, review findings gating, pinned diff hunks and 390px document bounds.
+- A real two-minute Flask review of HEAD~1..HEAD completed in 27.958 seconds with 212 visible words and one diagnostic question, no fix passes and $0 provider-reported subscription cost. The real two-minute calibration completed in 39.202 seconds, with one shortening pass, one section and two questions. These timings are measured runs, not latency guarantees.
+- Inspected `work/repo-home-desktop.png`, `work/continuous-desktop.png`, `work/continuous-mobile.png` and `work/changes-desktop.png`. Source references preserve their owning section; all sections remain on the page after an answer. Ask boxes are absent.
+- Replay tests verify cache deletion/tampering recovery, duplicate-answer suppression, response-specific Bayes updates, legacy evidence import, forgetting and a single discount for each observed code revision transition. Default response distributions are documented as heuristic assumptions.
