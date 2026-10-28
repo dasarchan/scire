@@ -1,18 +1,19 @@
 #!/bin/sh
 # Scire installer for macOS and Linux. No sudo or provider credentials required.
 set -eu
-VERSION=${SCIRE_VERSION:-0.1.2}
+ORIGINAL_PATH=$PATH
+VERSION=${SCIRE_VERSION:-0.1.3}
 OPENCODE_VERSION=1.18.35
 RELEASE=https://github.com/dasarchan/scire/releases/download/v$VERSION
 fail() { printf '\nScire: %s\n' "$*" >&2; exit 1; }
 case "${1:-}" in
-    --help) printf '%s\n' 'Install Scire, uv/Python, and OpenCode when needed.' 'Usage: sh install.sh [--help]' 'SCIRE_VERSION=0.1.2 selects a release.'; exit 0 ;;
+    --help) printf '%s\n' 'Install Scire, uv/Python, and OpenCode when needed.' 'Usage: sh install.sh [--help]' 'SCIRE_VERSION=0.1.3 selects a release.'; exit 0 ;;
     '') ;;
     *) fail "Unknown argument: $1 (try --help)" ;;
 esac
 case "$(uname -s)" in Darwin|Linux) ;; *) fail 'Supported systems: macOS and Linux.' ;; esac
 # Reject malformed release names before constructing URLs.
-case "$VERSION" in ''|*[!0-9.]*|.*|*..*|*.) fail 'SCIRE_VERSION must look like 0.1.2.' ;; esac
+case "$VERSION" in ''|*[!0-9.]*|.*|*..*|*.) fail 'SCIRE_VERSION must look like 0.1.3.' ;; esac
 command -v curl >/dev/null 2>&1 || fail 'Install curl, then run this installer again.'
 command -v git >/dev/null 2>&1 || fail 'Install Git first (macOS: xcode-select --install), then try again.'
 TMP=$(mktemp -d)
@@ -42,6 +43,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 # Keep an existing OpenCode 1 installation. A managed copy avoids replacing OpenCode 2.
 OC=${SCIRE_OPENCODE:-}
+[ -n "$OC" ] || { [ ! -x "$HOME/.local/share/scire/bin/opencode" ] || OC="$HOME/.local/share/scire/bin/opencode"; }
 [ -n "$OC" ] || OC=$(command -v opencode 2>/dev/null || true)
 [ -n "$OC" ] || OC="$HOME/.opencode/bin/opencode"
 OC_VERSION=$("$OC" --version 2>/dev/null || true)
@@ -59,8 +61,27 @@ case "$OC_VERSION" in
 esac
 uv tool install --force --reinstall --python 3.11 "$TMP/$WHEEL"
 BIN=$(uv tool dir --bin)
-printf '\nScire is installed. Connect your repos and provider:\n  %s/scire setup\n\nThen launch:\n  %s/scire\n' "$BIN" "$BIN"
-case ":${PATH}:" in
-    *":$BIN:"*) ;;
-    *) printf '\nTo use the short command, run: uv tool update-shell\nThen open a new terminal.\n' ;;
+UV=$(command -v uv)
+# Check the caller's PATH, not the temporary one used to bootstrap uv above.
+case ":$ORIGINAL_PATH:" in
+    *":$BIN:"*)
+        printf '\nScire is installed.\n  scire setup\n  scire\n'
+        ;;
+    *)
+        if PATH="$ORIGINAL_PATH" "$UV" tool update-shell > "$TMP/shell-update.log" 2>&1; then
+            printf '\nScire is installed. Shell PATH configuration updated.\n'
+        else
+            printf '\nScire is installed, but automatic shell setup needs attention:\n'
+            cat "$TMP/shell-update.log"
+        fi
+        printf '\nOpen a new terminal, then run:\n  scire setup\n  scire\n'
+        # A piped installer cannot change the parent terminal's environment.
+        # Quote the literal directory, including spaces and apostrophes.
+        QUOTED_BIN=$(printf '%s' "$BIN" | sed "s/'/'\"'\"'/g")
+        USER_SHELL=${SHELL:-sh}
+        case "${USER_SHELL##*/}" in
+            fish) printf "\nOr enable it in this terminal first:\n  fish_add_path '%s'\n" "$QUOTED_BIN" ;;
+            *) printf "\nOr enable it in this terminal first:\n  export PATH='%s':\$PATH\n" "$QUOTED_BIN" ;;
+        esac
+        ;;
 esac

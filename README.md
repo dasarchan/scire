@@ -10,13 +10,14 @@ On **macOS or Linux**, run:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/dasarchan/scire/latest/install.sh | sh
+# Open a new terminal (or run the PATH command printed above).
 scire setup
 scire
 ```
 
-The installer verifies the release checksum, installs [uv](https://docs.astral.sh/uv/) and Python when needed, and installs OpenCode 1.18.35 if you don't already have OpenCode 1. It needs curl and Git, uses your home directory, and needs no sudo. Existing provider credentials stay in OpenCode. A Scire-managed OpenCode copy lives in `~/.local/share/scire/bin/`; it does not replace another OpenCode installation. If `scire` isn't on your PATH yet, run `~/.local/bin/scire setup`, or `uv tool update-shell` and open a new terminal.
+The installer verifies the release checksum, installs [uv](https://docs.astral.sh/uv/) and Python when needed, and installs OpenCode 1.18.35 if you don't already have OpenCode 1. It needs curl and Git, uses your home directory, and needs no sudo. Existing provider credentials stay in OpenCode. A Scire-managed OpenCode copy lives in `~/.local/share/scire/bin/`; it does not replace another OpenCode installation. The installer adds Scire to your shell configuration when its executable directory is missing from PATH. Open a new terminal after installation, or run the printed PATH command in your current terminal, then use `scire setup` and `scire`. A piped installer cannot change the environment of the terminal that launched it.
 
-Prefer to inspect the installer first? Download [install.sh](https://github.com/dasarchan/scire/blob/latest/install.sh), read it, then run `sh install.sh`. Set `SCIRE_VERSION=0.1.2` to pin a release. [GitHub CLI](https://cli.github.com/) is optional, needed for GitHub PRs and posting comments.
+Prefer to inspect the installer first? Download [install.sh](https://github.com/dasarchan/scire/blob/latest/install.sh), read it, then run `sh install.sh`. Set `SCIRE_VERSION=0.1.3` to pin a release. [GitHub CLI](https://cli.github.com/) is optional, needed for GitHub PRs and posting comments.
 
 Already have uv and OpenCode? Install directly from the public repository:
 

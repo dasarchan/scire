@@ -34,3 +34,8 @@ The real Flask connection appeared read-only in Settings. Chrome verified that s
 - 45 pytest checks passed on macOS, including both running Chrome app tests, installer bootstrap and reuse, corrupt-download rejection before mutation, wheel receipt updates, and managed OpenCode selection.
 - Installer tests use an isolated home (including spaces) and substitute only downloads/tool binaries; the actual `install.sh` runs under `/bin/sh`.
 - Ruff correctness/format checks and wheel/sdist builds passed. PyPI publishing remains explicitly manual until a PyPI account owner registers the Trusted Publisher.
+
+## Installer PATH fix — v0.1.3 (2026-10-27)
+
+- 47 checks passed, including running Chrome app tests and real uv shell configuration tested by launching fresh bash and zsh shells.
+- Regression coverage verifies that shell setup receives the caller's original PATH even after uv bootstrap, prints short commands, and reuses the managed OpenCode binary on a second install.
