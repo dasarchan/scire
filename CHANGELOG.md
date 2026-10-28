@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.3 — 2026-10-27
+
+- Add Scire to shell PATH configuration automatically and show short setup commands.
+- Detect the caller's original PATH and explain how to enable Scire in the current terminal.
+- Reuse the managed OpenCode installation when rerunning the installer.
+
+## v0.1.2 — 2026-10-27
+
+- Make Scire public and add a one-command macOS/Linux installer with verified release downloads.
+- Bootstrap uv, Python and compatible OpenCode without sudo or replacing existing OpenCode installations.
+- Publish release assets and checksums automatically; prepare optional PyPI Trusted Publishing.
+- Support updates from wheel installations and make GitHub CLI optional in diagnostics.
+
 ## v0.1.1 — 2026-10-27
 
 - Discover local Git repositories during terminal setup and select connections with a searchable checklist.

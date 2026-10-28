@@ -8,7 +8,7 @@ concurrency:
   group: release-latest
   cancel-in-progress: false
 jobs:
-  latest:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +18,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: '3.11'
+      - run: uv sync --locked --group dev
       - name: Validate release version
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -25,10 +26,20 @@ jobs:
           uv run python - <<'PY'
           import os
           from scire import __version__
-          assert os.environ['RELEASE_TAG'] == 'v' + __version__, 'Release tag must match package version'
+          assert os.environ['RELEASE_TAG'] == 'v' + __version__
           PY
-      - run: uv sync --locked --group dev
+      - run: uv run playwright install --with-deps chromium
       - run: uv run pytest -q
+        env:
+          SCIRE_BROWSER: chromium
       - run: uv build
+      - name: Upload installation assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          cp install.sh dist/install.sh
+          (cd dist && sha256sum *.whl *.tar.gz install.sh > SHA256SUMS)
+          gh release upload "$RELEASE_TAG" dist/* --clobber
       - name: Advance installation branch
         run: git push origin HEAD:refs/heads/latest

@@ -20,6 +20,7 @@ def opencode_binary() -> str:
     override = os.environ.get("SCIRE_OPENCODE")
     candidates = [
         override,
+        str(Path.home() / ".local/share/scire/bin/opencode"),
         shutil.which("opencode"),
         str(Path.home() / ".opencode/bin/opencode"),
         str(Path.home() / ".local/bin/opencode"),

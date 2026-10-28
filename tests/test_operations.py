@@ -223,3 +223,32 @@ def test_branch_head_checks_resolve_triple_dot_ranges(monkeypatch):
     monkeypatch.setattr(review, "revision", lambda root, ref: refs.append(ref) or "new")
     assert review.head_moved({"path": "."}, {"kind": "branch", "title": "main...feature", "head": "old"})
     assert refs == ["feature"]
+
+
+def test_wheel_receipts_and_pypi_use_public_update_repository(monkeypatch):
+    from scire import operations
+
+    for source in [
+        None,
+        "/tmp/deleted/scire_local-0.1.2-py3-none-any.whl",
+        "https://github.com/dasarchan/scire/releases/download/v0.1.2/scire_local-0.1.2-py3-none-any.whl",
+    ]:
+        monkeypatch.setattr(operations, "receipt_source", lambda: source)
+        assert operations.update_source() == operations.REPOSITORY
+
+
+def test_managed_opencode_preserves_explicit_override(tmp_path, monkeypatch):
+    from scire import agent
+
+    monkeypatch.setattr(agent.Path, "home", lambda: tmp_path)
+    managed = tmp_path / ".local/share/scire/bin/opencode"
+    managed.parent.mkdir(parents=True)
+    managed.write_text("#!/bin/sh\n")
+    managed.chmod(0o755)
+    monkeypatch.delenv("SCIRE_OPENCODE", raising=False)
+    assert agent.opencode_binary() == str(managed)
+    other = tmp_path / "override"
+    other.write_text("#!/bin/sh\n")
+    other.chmod(0o755)
+    monkeypatch.setenv("SCIRE_OPENCODE", str(other))
+    assert agent.opencode_binary() == str(other)

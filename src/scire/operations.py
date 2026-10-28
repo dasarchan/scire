@@ -57,7 +57,12 @@ def select_model(model=None):
 def doctor():
     checks = []
     for binary in ("git", "gh", "uv"):
-        checks.append((binary, shutil.which(binary) or "missing"))
+        checks.append(
+            (
+                binary,
+                shutil.which(binary) or ("optional — GitHub PR features" if binary == "gh" else "missing"),
+            )
+        )
     try:
         checks.append(("OpenCode", opencode_binary()))
     except ValueError:
@@ -99,6 +104,8 @@ def receipt_source():
 def update_source():
     source = receipt_source()
     if not source:
+        return REPOSITORY
+    if re.search(r"\.(whl|tar\.gz)(?:[?#].*)?$", source):
         return REPOSITORY
     if source.startswith("git+"):
         source = source[4:]

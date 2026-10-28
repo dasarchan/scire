@@ -6,18 +6,26 @@ Python 3.11+ · local web app · headless OpenCode · no frontend build step
 
 ## Install
 
-Install [uv](https://docs.astral.sh/uv/) and [OpenCode](https://opencode.ai/docs/). Scire is tested with OpenCode 1.18.35. Git is required; [GitHub CLI](https://cli.github.com/) is needed for GitHub PRs and posting comments.
+On **macOS or Linux**, run:
 
 ```sh
-uv tool install --python 3.11 git+https://github.com/dasarchan/scire.git@latest
+curl -fsSL https://raw.githubusercontent.com/dasarchan/scire/latest/install.sh | sh
+# Open a new terminal (or run the PATH command printed above).
+scire setup
 scire
 ```
 
-The repository is currently private, so Git access is required. If you use GitHub CLI authentication, run `gh auth setup-git` before the Git-based install. From a local checkout:
+The installer verifies the release checksum, installs [uv](https://docs.astral.sh/uv/) and Python when needed, and installs OpenCode 1.18.35 if you don't already have OpenCode 1. It needs curl and Git, uses your home directory, and needs no sudo. Existing provider credentials stay in OpenCode. A Scire-managed OpenCode copy lives in `~/.local/share/scire/bin/`; it does not replace another OpenCode installation. The installer adds Scire to your shell configuration when its executable directory is missing from PATH. Open a new terminal after installation, or run the printed PATH command in your current terminal, then use `scire setup` and `scire`. A piped installer cannot change the environment of the terminal that launched it.
+
+Prefer to inspect the installer first? Download [install.sh](https://github.com/dasarchan/scire/blob/latest/install.sh), read it, then run `sh install.sh`. Set `SCIRE_VERSION=0.1.3` to pin a release. [GitHub CLI](https://cli.github.com/) is optional, needed for GitHub PRs and posting comments.
+
+Already have uv and OpenCode? Install directly from the public repository:
 
 ```sh
-uv tool install --python 3.11 /path/to/scire
+uv tool install --python 3.11 git+https://github.com/dasarchan/scire.git@latest
 ```
+
+Release wheels and source archives are also available on [GitHub Releases](https://github.com/dasarchan/scire/releases). PyPI publishing is prepared but is not live yet; see [publishing](docs/publishing.md).
 
 On first use, Scire searches your folders for Git repositories and shows a searchable terminal checklist. Use ↑/↓ to move, Space to select and Enter to connect. Existing connections start selected. Then pick an existing OpenCode account or connect a provider, select `provider/model`, and describe your experience in the browser. Repository paths are never entered in the web app. To connect another account, run `scire setup --connect`. Login, browser OAuth and key entry happen inside OpenCode. Scire does not collect credentials in its web app. Provider and subscription access follow what OpenCode supports.
 
