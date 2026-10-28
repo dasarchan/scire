@@ -138,6 +138,8 @@ def validate_module(root: Path, value: dict, repo_map: dict, review=False) -> di
             for field in ("known", "unknown")
         ):
             raise ValueError("Question response likelihoods must sum to 1 for known and unknown learners")
+        if q.likelihoods[q.correct].known <= max(v.known for k, v in q.likelihoods.items() if k != q.correct):
+            raise ValueError("The correct response must be most likely for a learner who knows the concept")
         keys.add(q.key)
         if {o.key for o in q.options} != {"a", "b", "c", "d"} or len(
             {o.text.strip().lower() for o in q.options}

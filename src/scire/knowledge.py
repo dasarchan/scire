@@ -3,10 +3,12 @@ import copy
 import json
 import math
 import time
+from functools import lru_cache
+from pathlib import Path
 from .paths import read_json, transaction, write_json
 from .store import Store
 
-PRIOR, LEARN, GUESS, SLIP = 0.20, 0.12, 0.25, 0.10
+PRIOR, LEARN = 0.20, 0.12
 HALF_LIFE_DAYS = 45
 
 
@@ -39,6 +41,9 @@ def current(state: dict | None, fingerprint: str | None = None, now: float | Non
     if fingerprint and state.get("fingerprint") and fingerprint != state["fingerprint"]:
         state["mastery"] = PRIOR + (state["mastery"] - PRIOR) * 0.55
         state["code_changed"] = True
+    state["code_changed"] = bool(
+        fingerprint and state.get("fingerprint") and fingerprint != state["fingerprint"]
+    )
     state["confidence"] = 1 - math.exp(-state["attempts"] / 5)
     return state
 
@@ -49,13 +54,16 @@ def observe(state, answer, correct, misconception="", fingerprint="", now=None, 
     p = result["mastery"]
     # A choice has P(response | knows) and P(response | does not know).
     # This distinguishes diagnostic distractors from ambiguous wrong answers.
-    likelihood = (likelihoods or response_likelihoods(answer if correct else "__correct__"))[answer]
+    likelihood = (
+        likelihoods or response_likelihoods(answer if correct else ("b" if answer == "a" else "a"))
+    )[answer]
     known, unknown = likelihood["known"], likelihood["unknown"]
     posterior = p * known / max(1e-12, p * known + (1 - p) * unknown)
     result["mastery"] = min(0.98, posterior + (1 - posterior) * LEARN)
     result["attempts"] += 1
     result["correct"] += int(correct)
     result["updated_at"], result["fingerprint"] = now, fingerprint
+    result["code_changed"] = False
     result["confidence"] = 1 - math.exp(-result["attempts"] / 5)
     result["observations"] = (
         result.get("observations", [])
@@ -124,6 +132,14 @@ def replay(events: list[dict]) -> tuple[dict, set]:
     return values, seen
 
 
+@lru_cache(maxsize=32)
+def replay_log(path: str, modified: int, size: int):
+    # Cache only deterministic replay, keyed by the append-only log's identity.
+    # All callers receive copies; learner.json is never an authority for replay.
+    events = [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
+    return replay(events)
+
+
 class Knowledge:
     def __init__(self, store: Store, rid: str):
         self.store, self.rid = store, rid
@@ -131,12 +147,11 @@ class Knowledge:
         self.log = store.repo_dir(rid) / "events.jsonl"
 
     def history(self):
-        events = []
         if self.log.exists():
-            for line in self.log.read_text().splitlines():
-                if line.strip():
-                    events.append(json.loads(line))
-        values, seen = replay(events)
+            stamp = self.log.stat()
+            values, seen = copy.deepcopy(replay_log(str(self.log), stamp.st_mtime_ns, stamp.st_size))
+        else:
+            values, seen = {}, set()
         # Import only pre-event-log evidence, once. Cache edits cannot alter any
         # concept already represented by assessment/import events.
         legacy = {k: v for k, v in read_json(self.path, {}).items() if k not in values}
@@ -162,7 +177,9 @@ class Knowledge:
                 return current(prior, fingerprint), current(prior, fingerprint)
             now = time.time()
             before = current(prior, fingerprint, now)
-            likelihoods = likelihoods or response_likelihoods(answer if correct else "__correct__")
+            likelihoods = likelihoods or response_likelihoods(
+                answer if correct else ("b" if answer == "a" else "a")
+            )
             after = observe(prior, answer, correct, misconception, fingerprint, now, likelihoods)
             # Append evidence first. learner.json is a disposable compatibility cache.
             self.store.event(

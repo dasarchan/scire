@@ -88,3 +88,15 @@ def test_plain_launch_does_not_reopen_repo_picker_with_connected_repos(workspace
     store.save_profile({"setup": True})
     cli.main(["--no-open"])
     assert events == ["open", "open"]
+
+
+def test_code_discount_is_not_repeated_after_new_revision_answer(workspace):
+    store, repo, root, mapped, module = workspace
+    k = Knowledge(store, repo["id"])
+    _, first = k.record("dispatch", "before-change", "a", True, "", "sha1")
+    changed = k.states({"dispatch": "sha2"}, first["updated_at"])["dispatch"]
+    assert changed["code_changed"]
+    _, after = k.record("dispatch", "after-change", "a", True, "", "sha2")
+    same = k.states({"dispatch": "sha2"}, after["updated_at"])["dispatch"]
+    assert not same["code_changed"]
+    assert same["mastery"] == pytest.approx(after["mastery"])

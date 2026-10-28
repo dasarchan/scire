@@ -199,8 +199,11 @@ def main(argv=None):
             cmd.add_argument("target")
         if name == "ask":
             cmd.add_argument("question")
+        if name in {"learn", "review"}:
+            cmd.add_argument("--minutes", type=int, choices=[2, 5, 10], default=5)
         if name == "learn":
             cmd.add_argument("--focus")
+            cmd.add_argument("--calibrate", action="store_true")
         if name == "map":
             cmd.add_argument("--force", action="store_true")
             cmd.add_argument("--no-wait", action="store_true")
@@ -287,6 +290,8 @@ def main(argv=None):
                     "repo": repo["id"],
                     "target": args.target if args.command == "review" else "learn",
                     "focus": getattr(args, "focus", None),
+                    "minutes": args.minutes,
+                    "calibration": getattr(args, "calibrate", False),
                 },
             )
             show(state, result["url"], args.no_open)

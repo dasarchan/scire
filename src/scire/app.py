@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from .build import build_id
-from .paths import read_json, home
+from .paths import write_json, read_json, home
 from .store import Store
 from .maps import public_map
 from .source import resolve_anchor
@@ -78,25 +78,40 @@ def create_app(token=None, service=None):
 
     @app.get("/api/home")
     async def home_state():
-        repos = [{**r, "map": public_map(store, r["id"])} for r in store.repos()]
+        repos = [
+            {
+                **r,
+                "map": public_map(store, r["id"]),
+                "onboarding": read_json(store.repo_dir(r["id"]) / "onboarding.json", {}),
+            }
+            for r in store.repos()
+        ]
         return {
             "profile": store.profile(),
             "repos": repos,
             "sessions": [
                 {
-                    k: s[k]
-                    for k in (
-                        "id",
-                        "repo",
-                        "title",
-                        "target",
-                        "status",
-                        "round",
-                        "created_at",
-                        "updated_at",
-                        "cost",
-                        "seconds",
-                    )
+                    **{
+                        k: s[k]
+                        for k in (
+                            "id",
+                            "repo",
+                            "title",
+                            "target",
+                            "status",
+                            "round",
+                            "created_at",
+                            "updated_at",
+                            "cost",
+                            "seconds",
+                        )
+                    },
+                    "calibration": s.get("calibration", False),
+                    "complete": service.round_complete(s) if service else False,
+                    "answered_count": len(s["answers"]),
+                    "question_count": sum(
+                        len(m.get("questions", [])) for m in s["modules"] if m.get("status") == "ready"
+                    ),
                 }
                 for s in store.sessions()
             ],
@@ -131,6 +146,15 @@ def create_app(token=None, service=None):
         if service:
             service.sync_repos(retry_errors=True)
         return {"repos": store.repos()}
+
+    @app.post("/api/repos/{rid}/onboarding")
+    async def repository_onboarding(rid: str, request: Request):
+        store.repo(rid)
+        value = await request.json()
+        if value.get("calibration") not in {"skipped", "offered"}:
+            raise ValueError("Invalid calibration preference")
+        write_json(store.repo_dir(rid) / "onboarding.json", {"calibration": value["calibration"]})
+        return {"ok": True}
 
     @app.get("/api/models")
     async def models():
@@ -192,6 +216,20 @@ def create_app(token=None, service=None):
     @app.get("/api/sessions/{rid}/{sid}")
     async def session(rid: str, sid: str):
         return service.public_session(rid, sid)
+
+    @app.get("/api/sessions/{rid}/{sid}/changes")
+    async def review_changes(rid: str, sid: str):
+        from .review import diff_hunks
+
+        value = store.session(rid, sid)
+        review = value.get("review")
+        if not review:
+            raise ValueError("This session is not a change review")
+        return {
+            "head": review["head"],
+            "base": review.get("base", ""),
+            "files": diff_hunks(review.get("diff", "")),
+        }
 
     @app.post("/api/sessions/{rid}/{sid}/start")
     async def start_round(rid: str, sid: str, request: Request):

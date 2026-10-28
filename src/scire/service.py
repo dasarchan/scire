@@ -207,6 +207,8 @@ class Service:
 
     async def new_session(self, rid, target="learn", focus=None, topic=None, minutes=5, calibration=False):
         reading_budget(minutes)
+        if not isinstance(calibration, bool):
+            raise ValueError("Calibration must be true or false")
         repo = self.store.repo(rid)
         values = {}
         if target != "learn":

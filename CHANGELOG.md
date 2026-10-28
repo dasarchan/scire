@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.1.8 — 2026-10-28
+
+- Read lessons as one continuous page with interspersed questions and contextual source references.
+- Choose a 2-, 5- or 10-minute budget; constrain explanations, questions and feedback, and use shorter targeted prompts.
+- Rebuild Bayesian mastery from answer events with per-choice likelihoods, forgetting, code drift, area rollups and compact prompt summaries.
+- Give every repo a home with mastery and session cards, a concept-tree modal, optional calibration and a PR/branch review table.
+- Add pinned Changes views with diff hunks and old/new line numbers; remove the browser Ask box.
+- Reopen connected workspaces with plain scire; reserve the repository picker for explicit setup after first use.
+
 ## v0.1.7 — 2026-10-28
 
 - Fix OpenCode output permissions using job-relative paths and an isolated Git root; support GPT providers’ apply_patch tool in lesson instructions.
