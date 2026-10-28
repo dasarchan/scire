@@ -1213,3 +1213,30 @@ dialog .dialog-actions {
   color: var(--text);
   line-height: 1.75;
 }
+@container (max-width:600px) {
+  .knowledge-tree summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .knowledge-tree summary > span {
+    min-width: 0;
+  }
+  .knowledge-tree summary .bar {
+    grid-column: 1/-1;
+    grid-row: 2;
+    width: 100%;
+  }
+  .knowledge-tree summary small {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .concept-leaf,
+  .sessions .row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .knowledge-tree details details {
+    margin-left: 0;
+  }
+}

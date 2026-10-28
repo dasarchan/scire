@@ -2,7 +2,7 @@ const token =
   location.hash.slice(1) || sessionStorage.getItem("scire-token") || "";
 if (token) {
   sessionStorage.setItem("scire-token", token);
-  history.replaceState(null, "", location.pathname);
+  history.replaceState(null, "", location.pathname + location.search);
 }
 const main = document.querySelector("#main"),
   content = document.querySelector("#content"),
@@ -566,8 +566,10 @@ function renderWorkspace() {
     body =
       '<div class="preview-card"><h2>Finding the right starting point.</h2><p>The first module appears as soon as OpenCode writes and validates it. You do not have to wait for the whole round.</p></div>';
   }
-  const retryable=['error','cancelled','interrupted'].includes(s.status);
-  const error=retryable?`<div class="error">${escape(s.error||'This run stopped. Your validated modules and answers are saved.')} <button class="secondary" id="retry-round">Try another round →</button></div>`:'';
+  const retryable = ["error", "cancelled", "interrupted"].includes(s.status);
+  const error = retryable
+    ? `<div class="error">${escape(s.error || "This run stopped. Your validated modules and answers are saved.")} <button class="secondary" id="retry-round">Try another round →</button></div>`
+    : "";
   const oldScroll = document.querySelector(".code-lines")?.scrollTop || 0;
   content.innerHTML = `${banner}${error}<div class="workspace-status">Round ${s.round} · ${Number(s.cost).toFixed(3)} USD reported · ${Math.round(s.seconds)}s total agent time</div><div class="workspace" style="--pane-width:${Number(localStorage.getItem("scire-pane-width")) || 390}px"><div class="lesson-body">${activity}${body}${s.complete ? '<div class="next-footer"><div><h3>Round complete.</h3><small>Choose what to understand next.</small></div><button class="primary" id="what-next">What next →</button></div>' : ""}${s.topics
     .filter((t) => t.answer)
