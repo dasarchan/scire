@@ -19,8 +19,64 @@
         aria-label="Collapse sidebar"
         aria-expanded="true"
       >
-        ☰</button
-      ><button id="repo-menu">All repositories <span>⌄</span></button>
+        ☰
+      </button>
+      <div class="repo-switcher">
+        <button
+          id="repo-menu"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-controls="repo-options"
+        >
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            aria-hidden="true"
+          >
+            <path d="M2.5 6V4.5h5l2 2h8v9h-15z" />
+          </svg>
+          <span id="repo-label">All repositories</span>
+          <svg
+            class="repo-chevron"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            aria-hidden="true"
+          >
+            <path d="m4 6 4 4 4-4" />
+          </svg>
+        </button>
+        <div id="repo-dropdown" hidden>
+          <label class="repo-search"
+            ><svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              aria-hidden="true"
+            >
+              <circle cx="8.5" cy="8.5" r="5.5" />
+              <path d="m13 13 4 4" /></svg
+            ><input
+              id="repo-filter"
+              type="search"
+              placeholder="Find a repository…"
+              aria-label="Find a repository"
+              autocomplete="off"
+              spellcheck="false"
+          /></label>
+          <div id="repo-options" role="listbox" aria-label="Repositories"></div>
+          <div class="repo-dropdown-footer">
+            <span id="repo-count"></span
+            ><button id="repo-settings">
+              Manage connections <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </div>
+      </div>
       <div class="top-actions">
         <span class="connection"><i></i>Local workspace</span
         ><button id="profile-badge" aria-label="Profile">A</button>

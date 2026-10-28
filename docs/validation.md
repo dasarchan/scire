@@ -39,3 +39,8 @@ The real Flask connection appeared read-only in Settings. Chrome verified that s
 
 - 47 checks passed, including running Chrome app tests and real uv shell configuration tested by launching fresh bash and zsh shells.
 - Regression coverage verifies that shell setup receives the caller's original PATH even after uv bootstrap, prints short commands, and reuses the managed OpenCode binary on a second install.
+
+## Repository dropdown — v0.1.4 (2026-10-27)
+
+- 48 tests passed, including three running Chrome app tests. The dropdown test covers search/no results, same-name repo paths, keyboard selection, Escape/focus restoration, reload persistence, outside click, settings navigation and viewport bounds at 390px.
+- Inspected desktop and mobile screenshots (`work/repo-dropdown-desktop.png`, `work/repo-dropdown-mobile.png`). No page-blocking dialog or page overflow. Ruff checks, formatting, JavaScript syntax and package builds passed.
