@@ -98,6 +98,7 @@ def test_workspace_navigation_responsiveness_and_findings(workspace, tmp_path):
             page.get_by_role("button", name="Learn this →").wait_for()
             page.goto(base + f"/w/{repo['id']}/{s['id']}/")
             page.locator(".findings-lock").wait_for()
+            assert page.evaluate("document.documentElement.scrollWidth") == 390
             assert page.locator(".finding").count() == 0
             assert page.locator(".feedback").count() == 0
             page.get_by_role("button", name="I don’t know yet").click()
@@ -174,56 +175,107 @@ def test_setup_reflects_terminal_connections_without_path_fields(workspace, monk
                 ),
             )
             page.goto(base + "/#setup-token")
-            page.get_by_role("heading", name="About you").wait_for()
-            teaching_provider = page.get_by_label("Teaching model provider", exact=True)
-            teaching_model = page.get_by_label("Teaching model", exact=True)
-            teaching_provider.select_option("other")
-            teaching_model.select_option("other/fast")
-            page.get_by_label("Quick answers provider", exact=True).select_option("test")
-            page.get_by_label("Quick answers", exact=True).select_option("test/another-model")
-            assert page.locator("datalist").count() == 0
-            assert page.locator(".eyebrow").count() == 0
+            page.get_by_role("heading", name="What should we call you?").wait_for()
+            assert page.locator("#nav").is_hidden()
+            assert page.get_by_role("progressbar").get_attribute("aria-valuenow") == "1"
+            name = page.get_by_label("Your name", exact=True)
+            name.fill("   ")
+            page.get_by_role("button", name="Continue", exact=True).click()
+            assert not payload
+            name.fill("Alex")
             page.set_viewport_size({"width": 1440, "height": 1000})
             page.wait_for_timeout(200)
-            page.screenshot(path="work/setup-refined-desktop.png", full_page=False, animations="disabled")
+            page.screenshot(path="work/onboarding-name-desktop.png", animations="disabled")
             page.set_viewport_size({"width": 390, "height": 844})
             page.wait_for_timeout(200)
-            page.screenshot(path="work/setup-refined-mobile.png", full_page=False, animations="disabled")
-            assert page.locator('[name="paths"]').count() == 0
-            assert page.get_by_role("button", name="Create workspace →").is_disabled()
-            page.get_by_label("Your name", exact=True).fill("Alex")
-            page.get_by_label("What do you work on?", exact=True).fill("Learning the request flow")
-            page.get_by_role("button", name="Choose in terminal ↗").click()
-            page.get_by_role("heading", name="Choose repositories in your terminal.").wait_for()
-            page.get_by_role("button", name="Done", exact=True).click()
-            # Simulate the CLI committing its selection while this form stays open.
-            store.set_repos([root])
-            page.locator(".repo-connection b").wait_for()
+            page.screenshot(path="work/onboarding-name-mobile.png", animations="disabled")
+            name.press("Enter")
+            page.get_by_role("heading", name="What’s your background?").wait_for()
+            page.get_by_role("button", name="New to this codebase", exact=True).click()
+            role = page.get_by_label("Your background", exact=True)
+            assert role.input_value() == "New to this codebase"
+            role.fill("Learning the request flow")
+            page.get_by_role("button", name="Back", exact=True).click()
             assert page.get_by_label("Your name", exact=True).input_value() == "Alex"
+            page.get_by_label("Your name", exact=True).press("Enter")
+            # Refresh keeps both the current step and the answers.
+            page.reload()
             assert (
-                page.get_by_label("What do you work on?", exact=True).input_value()
-                == "Learning the request flow"
+                page.get_by_label("Your background", exact=True).input_value() == "Learning the request flow"
             )
-            assert page.get_by_role("button", name="Create workspace →").is_enabled()
-            page.get_by_label("Build repository maps in the background").uncheck()
+            page.get_by_role("button", name="Skip for now", exact=True).click()
+            page.get_by_role("button", name="Back", exact=True).click()
+            assert page.get_by_label("Your background", exact=True).input_value() == ""
+            page.get_by_label("Your background", exact=True).fill("Learning the request flow")
+            page.get_by_label("Your background", exact=True).press("Control+Enter")
+            page.get_by_role("heading", name="Which model would you like to use?").wait_for()
+            teaching_provider = page.get_by_label("Teaching model provider", exact=True)
+            teaching_model = page.get_by_label("Teaching model", exact=True)
+            page.locator(".model-manual-toggle").click()
+            page.get_by_label("Teaching model ID", exact=True).fill("invalid-model")
+            page.get_by_role("button", name="Continue", exact=True).click()
+            assert page.get_by_role("heading", name="Which model would you like to use?").is_visible()
+            assert not payload
+            page.locator(".model-manual-toggle").click()
+            teaching_provider.select_option("other")
+            teaching_model.select_option("other/fast")
+            assert page.locator("datalist").count() == 0
+            assert page.locator('[name="cheap_model"]').count() == 0
+            page.set_viewport_size({"width": 1440, "height": 1000})
+            page.wait_for_timeout(200)
+            page.screenshot(path="work/onboarding-model-desktop.png", animations="disabled")
+            page.get_by_role("button", name="Continue", exact=True).click()
+            page.get_by_role("heading", name="Connect your first repository.").wait_for()
+            assert page.get_by_role("button", name="Open workspace", exact=True).is_disabled()
+            assert page.locator('[name="paths"]').count() == 0
+            assert page.locator("dialog[open]").count() == 0
+            # The CLI can connect repositories while the final question stays open.
+            store.set_repos([root])
+            page.locator(".onboarding-repo strong").wait_for()
+            page.get_by_role("heading", name="Your code, ready to explore.").wait_for()
+            assert page.get_by_role("button", name="Open workspace", exact=True).is_enabled()
+            page.get_by_label("Prepare codebase maps").uncheck()
+            page.get_by_role("button", name="Back", exact=True).click()
+            assert page.get_by_label("Teaching model", exact=True).input_value() == "other/fast"
+            page.get_by_role("button", name="Continue", exact=True).click()
+            assert not page.get_by_label("Prepare codebase maps").is_checked()
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.wait_for_timeout(200)
+            page.screenshot(path="work/onboarding-ready-mobile.png", animations="disabled")
             assert page.evaluate("document.documentElement.scrollWidth") == 390
-            page.get_by_role("button", name="Create workspace →").click()
-            page.get_by_role("heading", name="Overview").wait_for()
-            assert payload and "paths" not in payload[0]
+            page.route(
+                "**/api/setup", lambda route: route.fulfill(status=503, json={"error": "Please retry"})
+            )
+            page.get_by_role("button", name="Open workspace", exact=True).click()
+            page.get_by_role("alert").get_by_text("Please retry").wait_for()
+            assert page.get_by_role("button", name="Open workspace", exact=True).is_enabled()
+            page.unroute("**/api/setup")
+            page.get_by_role("button", name="Open workspace", exact=True).click()
+            page.get_by_role("heading", name="Overview", exact=True).wait_for()
+            assert payload and "paths" not in payload[-1]
+            assert payload[-1]["map_now"] is False
             assert store.profile()["name"] == "Alex" and store.repos()[0]["id"] == repo["id"]
+            assert store.profile()["role"] == "Learning the request flow"
             assert store.profile()["model"] == "other/fast"
-            assert store.profile()["cheap_model"] == "test/another-model"
+            assert store.profile()["cheap_model"] == ""
+            assert page.locator("#nav").is_visible()
+            assert page.evaluate("sessionStorage.getItem('scire-onboarding-v1')") is None
             page.locator('[data-view="settings"]').click()
             page.get_by_role("heading", name="Connected repositories", exact=True).wait_for()
             assert page.locator('[name="paths"]').count() == 0 and not errors
-            page.get_by_label("Quick answers provider", exact=True).select_option("")
+            page.get_by_label("Quick answers provider", exact=True).select_option("test")
+            page.get_by_label("Quick answers", exact=True).select_option("test/another-model")
             page.locator('.model-picker[data-name="model"] .model-manual-toggle').click()
             page.get_by_label("Teaching model ID", exact=True).fill("private/custom-model")
-            page.get_by_role("button", name="Save settings", exact=True).click()
-            page.get_by_text("Settings saved", exact=True).wait_for()
+            with page.expect_response("**/api/setup"):
+                page.get_by_role("button", name="Save settings", exact=True).click()
+            page.wait_for_function("document.querySelector('#model-provider').value === 'private'")
             assert store.profile()["model"] == "private/custom-model"
+            assert store.profile()["cheap_model"] == "test/another-model"
+            page.get_by_label("Quick answers provider", exact=True).select_option("")
+            with page.expect_response("**/api/setup"):
+                page.get_by_role("button", name="Save settings", exact=True).click()
             assert store.profile()["cheap_model"] == ""
-            # Catalog failure leaves saved models intact and allows retry.
             page.route("**/api/models", lambda route: route.fulfill(status=503, json={"error": "offline"}))
             page.goto(base + "/?view=settings")
             page.get_by_role("button", name="Retry", exact=True).first.wait_for()
