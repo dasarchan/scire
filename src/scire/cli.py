@@ -335,11 +335,11 @@ def main(argv=None):
                 print("\n" + item["repo"] + "\n" + item.get("notes", ""))
             print("\nSaved: " + result.get("path", ""))
             return
-        if sys.stdin.isatty() and not Store().profile().get("setup"):
+        if sys.stdin.isatty() and not Store().repos() and not Store().profile().get("setup"):
             from .discovery import connect_repositories
 
             connect_repositories()
-        if not Store().profile().get("model") and sys.stdin.isatty():
+        if not Store().profile().get("setup") and not Store().profile().get("model") and sys.stdin.isatty():
             print("Welcome to Scire. Inference runs through your OpenCode provider login.")
             if input("Connect a provider now? [y/N] ").strip().lower() in {"y", "yes"}:
                 operations.connect()

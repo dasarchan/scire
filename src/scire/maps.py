@@ -6,7 +6,7 @@ from pathlib import Path
 from .models import RepoMap
 from .source import resolve_anchor
 from .paths import read_json
-from .knowledge import current
+from .knowledge import current, Knowledge, rollup_areas
 from .store import Store
 
 
@@ -96,7 +96,7 @@ def concept_fingerprint(root: Path, concept: dict) -> str:
 def public_map(store: Store, rid: str) -> dict:
     value = read_json(store.repo_dir(rid) / "map.json", {"status": "missing", "areas": [], "concepts": []})
     source = Path(value.get("source", store.repo(rid)["path"]))
-    learner = read_json(store.repo_dir(rid) / "learner.json", {})
+    learner = Knowledge(store, rid).states()
     concepts = []
     for c in value.get("concepts", []):
         if c.get("pending"):
@@ -115,26 +115,10 @@ def public_map(store: Store, rid: str) -> dict:
                 "attempts": state["attempts"],
                 "misconceptions": state["misconceptions"],
                 "fingerprint": fp,
+                "code_changed": state.get("code_changed", False),
             }
         )
-    areas = []
-    by_id = {a["id"]: a for a in value.get("areas", [])}
-
-    def belongs(c, aid):
-        parent = c["parent"]
-        seen = set()
-        while parent and parent not in seen:
-            if parent == aid:
-                return True
-            seen.add(parent)
-            parent = by_id.get(parent, {}).get("parent")
-        return False
-
-    for area in value.get("areas", []):
-        children = [c for c in concepts if belongs(c, area["id"])]
-        weight = sum(c.get("importance", 0.5) for c in children)
-        mastery = sum(c["mastery"] * c.get("importance", 0.5) for c in children) / weight if weight else 0.2
-        areas.append({**area, "mastery": mastery, "concept_count": len(children)})
+    areas = rollup_areas(value.get("areas", []), concepts)
     return {
         **{k: v for k, v in value.items() if k not in {"areas", "concepts"}},
         "areas": areas,

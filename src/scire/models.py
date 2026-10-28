@@ -1,6 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from pydantic import BaseModel, Field
+from .knowledge import response_likelihoods
 from .source import Anchor, resolve_anchor
 
 ID = r"^[a-z0-9][a-z0-9_-]{0,79}$"
@@ -37,6 +38,11 @@ class Option(BaseModel):
     text: str = Field(min_length=1, max_length=450)
 
 
+class ResponseLikelihood(BaseModel):
+    known: float = Field(gt=0, lt=1)
+    unknown: float = Field(gt=0, lt=1)
+
+
 class Question(BaseModel):
     key: str = Field(pattern=ID)
     concept: str
@@ -46,6 +52,8 @@ class Question(BaseModel):
     explanation: str = Field(min_length=1, max_length=650)
     misconception: str = Field(max_length=400)
     ref: str
+    likelihoods: dict[str, ResponseLikelihood] | None = None
+    after: str = Field(default="flow", pattern=r"^(why|flow|key_code|pitfalls)$")
 
 
 class Finding(BaseModel):
@@ -121,6 +129,15 @@ def validate_module(root: Path, value: dict, repo_map: dict, review=False) -> di
     for q in module.questions:
         if q.key in keys or q.concept not in module.concepts or q.ref not in anchors:
             raise ValueError("Question keys, assessed concepts and code refs must be valid")
+        if q.likelihoods is None:
+            q.likelihoods = {k: ResponseLikelihood(**v) for k, v in response_likelihoods(q.correct).items()}
+        if set(q.likelihoods) != {"a", "b", "c", "d", "unknown"}:
+            raise ValueError("Question likelihoods must cover a, b, c, d and unknown")
+        if any(
+            abs(sum(getattr(v, field) for v in q.likelihoods.values()) - 1) > 0.005
+            for field in ("known", "unknown")
+        ):
+            raise ValueError("Question response likelihoods must sum to 1 for known and unknown learners")
         keys.add(q.key)
         if {o.key for o in q.options} != {"a", "b", "c", "d"} or len(
             {o.text.strip().lower() for o in q.options}
