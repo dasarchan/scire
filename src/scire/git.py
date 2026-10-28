@@ -68,7 +68,14 @@ def pinned_worktree(repo: dict, ref: str | None = None, remote_ref: str | None =
         git(mirror, "fetch", "--no-tags", str(source), "+refs/heads/*:refs/heads/*", timeout=90)
     if remote_ref:
         remote = git(source, "remote", "get-url", "origin").strip()
-        git(mirror, "fetch", "--no-tags", remote, remote_ref, timeout=90)
+        import shutil
+
+        options = (
+            ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
+            if "github.com/" in remote and shutil.which("gh")
+            else []
+        )
+        git(mirror, *options, "fetch", "--no-tags", remote, remote_ref, timeout=90)
         sha = revision(mirror, "FETCH_HEAD")
     else:
         chosen = ref or default_ref(source)

@@ -178,34 +178,86 @@ class AgentRunner:
         process = None
         watcher = None
         events = None
+        stderr_task = None
         try:
             async with deadline:
-                progress("Starting OpenCode")
-                process = await asyncio.create_subprocess_exec(
-                    opencode_binary(),
-                    "serve",
-                    "--pure",
-                    "--hostname",
-                    "127.0.0.1",
-                    "--port",
-                    "0",
-                    cwd=job_dir,
-                    env=env,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.DEVNULL,
-                    start_new_session=True,
-                )
-                self.processes.add(process)
+                diagnostic = b""
+                for startup_attempt in range(3):
+                    progress(
+                        "Starting OpenCode"
+                        if startup_attempt == 0
+                        else f"Retrying OpenCode startup · {startup_attempt}/2"
+                    )
+                    process = await asyncio.create_subprocess_exec(
+                        opencode_binary(),
+                        "serve",
+                        "--pure",
+                        "--hostname",
+                        "127.0.0.1",
+                        "--port",
+                        "0",
+                        cwd=job_dir,
+                        env=env,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        start_new_session=True,
+                    )
+                    self.processes.add(process)
 
-                async def boot():
-                    import re
+                    async def drain(proc):
+                        nonlocal diagnostic
+                        while chunk := await proc.stderr.read(2048):
+                            diagnostic = (diagnostic + chunk)[-8192:]
 
-                    while line := await process.stdout.readline():
-                        if match := re.search(rb"http://127\.0\.0\.1:\d+", line):
-                            return match[0].decode()
-                    raise ValueError("OpenCode could not start; run scire doctor")
+                    stderr_task = asyncio.create_task(drain(process))
 
-                url = await asyncio.wait_for(boot(), 20)
+                    async def boot(proc):
+                        import re
+
+                        while line := await proc.stdout.readline():
+                            if match := re.search(rb"http://127\.0\.0\.1:\d+", line):
+                                return match[0].decode()
+                        raise ValueError("OpenCode could not start")
+
+                    try:
+                        url = await asyncio.wait_for(boot(process), 20)
+                        break
+                    except (ValueError, asyncio.TimeoutError):
+                        await self.stop(process)
+                        self.processes.discard(process)
+                        await asyncio.gather(stderr_task, return_exceptions=True)
+                        if startup_attempt == 2:
+                            import re
+
+                            detail = diagnostic.decode(errors="replace")
+                            for key, value in env.items():
+                                if re.search(r"KEY|TOKEN|SECRET|PASSWORD", key, re.I) and len(value) > 3:
+                                    detail = detail.replace(value, "[redacted]")
+
+                            def redact_config(value):
+                                nonlocal detail
+                                if isinstance(value, dict):
+                                    for key, child in value.items():
+                                        if (
+                                            re.search(r"key|token|secret|password", key, re.I)
+                                            and isinstance(child, str)
+                                            and child
+                                        ):
+                                            detail = detail.replace(child, "[redacted]")
+                                        else:
+                                            redact_config(child)
+                                elif isinstance(value, list):
+                                    for child in value:
+                                        redact_config(child)
+
+                            redact_config(config)
+                            detail = re.sub(r"[A-Za-z0-9_-]{24,}", "[redacted]", detail)[-1000:]
+                            write_json(job_dir / "startup-error.json", {"detail": detail})
+                            raise ValueError(
+                                "OpenCode could not start after three attempts; run scire doctor. Sanitized diagnostics: "
+                                + str(job_dir / "startup-error.json")
+                            )
+                        await asyncio.sleep(0.5 * (startup_attempt + 1))
                 async with httpx.AsyncClient(base_url=url, auth=("scire", password), timeout=None) as client:
                     response = await client.post(
                         "/session", params={"directory": str(job_dir)}, json={"title": f"Scire · {kind}"}
@@ -360,10 +412,10 @@ class AgentRunner:
                 "OpenCode connection failed or the operation budget was reached. Check activity and run metrics."
             ) from exc
         finally:
-            for task in (watcher, events):
+            for task in (watcher, events, stderr_task):
                 if task:
                     task.cancel()
-            await asyncio.gather(*(t for t in (watcher, events) if t), return_exceptions=True)
+            await asyncio.gather(*(t for t in (watcher, events, stderr_task) if t), return_exceptions=True)
             if process:
                 await self.stop(process)
                 self.processes.discard(process)

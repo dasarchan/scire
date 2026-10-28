@@ -148,6 +148,13 @@ function markdown(text) {
   return `<div class="prose" id="${key}"></div>`;
 }
 function autosize() {
+  document.querySelectorAll("label").forEach((label, i) => {
+    const control = label.nextElementSibling;
+    if (control?.matches("input,textarea,select")) {
+      control.id ||= "scire-field-" + i;
+      label.htmlFor = control.id;
+    }
+  });
   document.querySelectorAll("textarea").forEach((t) => {
     const grow = () => {
       t.style.height = "auto";
@@ -310,7 +317,26 @@ function bindAsk(session = null) {
       button.textContent = "Finding the right approach…";
       try {
         const result = await api("ask", { repo: rid, session, question });
-        location.href = `/w/${rid}/${result.session}/`;
+        if (result.topic.route === "quick") {
+          if (session) await pollWorkspace(true);
+          else {
+            const box = document.createElement("div");
+            box.innerHTML =
+              renderTopics({
+                repo: rid,
+                id: result.session,
+                topics: [result.topic],
+              }) +
+              `<div class="inline-actions"><button class="secondary" data-open-topic>Continue this topic →</button></div>`;
+            form.nextElementSibling.after(box);
+            box.querySelector("[data-open-topic]").onclick = () =>
+              (location.href = `/w/${rid}/${result.session}/`);
+            bindTopicRefs();
+          }
+          button.disabled = false;
+          button.textContent = "Explore question →";
+          form.elements.question.value = "";
+        } else location.href = `/w/${rid}/${result.session}/`;
       } catch (e) {
         toast(e.message);
         button.disabled = false;
@@ -322,6 +348,9 @@ function bindAsk(session = null) {
 }
 function render() {
   if (!state) return;
+  document
+    .querySelectorAll("[data-view]")
+    .forEach((b) => b.classList.toggle("selected", b.dataset.view === view));
   document.querySelector("#profile-badge").textContent = (
     state.profile.name || "You"
   )
@@ -439,17 +468,43 @@ function render() {
   bindAsk();
   loadReviews(repos);
 }
+function renderTopics(s) {
+  return s.topics
+    .map((t, i) =>
+      t.answer
+        ? `<section class="topic-answer"><h3>${escape(t.question)}</h3>${markdown(t.answer)}<div class="anchor-links">${(t.refs || []).map((a, j) => `<button data-topic-source="${s.repo}/${s.id}/${i}/${j}">${escape(a.path)} ↗</button>`).join("")}</div></section>`
+        : "",
+    )
+    .join("");
+}
+function bindTopicRefs() {
+  document.querySelectorAll("[data-topic-source]").forEach(
+    (b) =>
+      (b.onclick = async () => {
+        try {
+          const [rid, sid, i, j] = b.dataset.topicSource.split("/");
+          const ref = await api(
+            `sessions/${rid}/${sid}/topics/${i}/source/${j}`,
+          );
+          if (document.querySelector("#code-pane")) {
+            anchor = ref;
+            pinned = true;
+            keyword = "";
+            renderCode();
+          } else {
+            modal.innerHTML = `<h2>${escape(ref.path)}</h2><p>Lines ${ref.start_line}–${ref.end_line}</p><pre class="source-preview">${ref.lines.map((l) => escape(l.number + "  " + l.text)).join("\n")}</pre><div class="dialog-actions"><button class="secondary" data-close>Close</button></div>`;
+            modal.showModal();
+            modal.querySelector("[data-close]").onclick = () => modal.close();
+          }
+        } catch (e) {
+          toast(e.message);
+        }
+      }),
+  );
+}
 function renderDepth() {
   const s = workspace;
-  content.innerHTML = `${s.topics
-    .filter((t) => t.answer)
-    .map(
-      (t) =>
-        `<section class="topic-answer"><h3>${escape(t.question)}</h3>${markdown(t.answer)}</section>`,
-    )
-    .join(
-      "",
-    )}<section class="card depth-form"><p class="eyebrow">BEFORE WE BEGIN</p><h2>Choose how deep to go.</h2><p>Skip areas you do not need, skim familiar ones, or take a deeper look. Your answers will refine the learning plan.</p><form id="depth-form"><div class="depth-list">${s.map.areas
+  content.innerHTML = `${renderTopics(s)}<section class="card depth-form"><p class="eyebrow">BEFORE WE BEGIN</p><h2>Choose how deep to go.</h2><p>Skip areas you do not need, skim familiar ones, or take a deeper look. Your answers will refine the learning plan.</p><form id="depth-form"><div class="depth-list">${s.map.areas
     .map(
       (a) =>
         `<div class="row"><div><h3>${escape(a.name)}</h3><p>${escape(a.summary)}</p><small>${percent(a.mastery)}% estimated understanding</small></div><select name="${escape(a.id)}" aria-label="Depth for ${escape(a.name)}">${["skip", "skim", "standard", "deep"].map((d) => `<option value="${d}" ${(s.depths[a.id] || "standard") === d ? "selected" : ""}>${d[0].toUpperCase() + d.slice(1)}</option>`).join("")}</select></div>`,
@@ -525,6 +580,7 @@ function renderWorkspace() {
   );
   if (!s.started_learning) {
     renderDepth();
+    bindTopicRefs();
     return;
   }
   const modules = s.modules.sort(
@@ -571,15 +627,7 @@ function renderWorkspace() {
     ? `<div class="error">${escape(s.error || "This run stopped. Your validated modules and answers are saved.")} <button class="secondary" id="retry-round">Try another round →</button></div>`
     : "";
   const oldScroll = document.querySelector(".code-lines")?.scrollTop || 0;
-  content.innerHTML = `${banner}${error}<div class="workspace-status">Round ${s.round} · ${Number(s.cost).toFixed(3)} USD reported · ${Math.round(s.seconds)}s total agent time</div><div class="workspace" style="--pane-width:${Number(localStorage.getItem("scire-pane-width")) || 390}px"><div class="lesson-body">${activity}${body}${s.complete ? '<div class="next-footer"><div><h3>Round complete.</h3><small>Choose what to understand next.</small></div><button class="primary" id="what-next">What next →</button></div>' : ""}${s.topics
-    .filter((t) => t.answer)
-    .map(
-      (t) =>
-        `<section class="topic-answer"><h3>${escape(t.question)}</h3>${markdown(t.answer)}</section>`,
-    )
-    .join(
-      "",
-    )}${askForm(s.id)}</div><div class="code-splitter" role="separator" aria-label="Resize code pane" aria-orientation="vertical" tabindex="0"></div><aside class="code-pane" id="code-pane"></aside></div>`;
+  content.innerHTML = `${banner}${error}<div class="workspace-status">Round ${s.round} · ${Number(s.cost).toFixed(3)} USD reported · ${Math.round(s.seconds)}s total agent time</div><div class="workspace" style="--pane-width:${Number(localStorage.getItem("scire-pane-width")) || 390}px"><div class="lesson-body">${activity}${body}${s.complete ? '<div class="next-footer"><div><h3>Round complete.</h3><small>Choose what to understand next.</small></div><button class="primary" id="what-next">What next →</button></div>' : ""}${renderTopics(s)}${askForm(s.id)}</div><div class="code-splitter" role="separator" aria-label="Resize code pane" aria-orientation="vertical" tabindex="0"></div><aside class="code-pane" id="code-pane"></aside></div>`;
   if (current?.status === "ready" && !anchor && !pinned)
     anchor = current.resolved[current.anchors[0].id];
   renderCode();
@@ -663,6 +711,7 @@ function renderWorkspace() {
         toast(e.message);
       }
     };
+  bindTopicRefs();
   bindResize();
   bindAsk(s.id);
   autosize();

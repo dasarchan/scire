@@ -50,7 +50,10 @@ def resolve_anchor(root: Path, value: Anchor | dict) -> dict:
     elif anchor.symbol:
         matches = []
         if path.suffix == ".py":
-            tree = ast.parse(text)
+            try:
+                tree = ast.parse(text)
+            except SyntaxError as exc:
+                raise ValueError("Cannot resolve a symbol in invalid Python; use a literal or lines") from exc
 
             def walk(nodes, prefix=""):
                 for node in nodes:
@@ -87,6 +90,9 @@ def resolve_anchor(root: Path, value: Anchor | dict) -> dict:
     if any(n < start or n > end for n in anchor.key_lines):
         raise ValueError("Key lines must lie inside the highlighted range")
     excerpt_start, excerpt_end = max(1, start - 5), min(len(lines), end + 5)
+    excerpt = "\n".join(lines[excerpt_start - 1 : excerpt_end])
+    if any(not word or word not in excerpt for word in anchor.look_for):
+        raise ValueError("Look-for identifiers must occur in the code excerpt")
     return {
         **anchor.model_dump(),
         "start_line": start,

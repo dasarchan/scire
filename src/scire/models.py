@@ -143,3 +143,16 @@ def validate_module(root: Path, value: dict, repo_map: dict, review=False) -> di
     if len(prose.split()) > 420:
         raise ValueError("Module exceeds 420 visible words; teach less and use shorter examples")
     return {**module.model_dump(), "resolved": resolved}
+
+
+class RepositoryDigest(BaseModel):
+    repo: str
+    changed: list[str] = Field(max_length=20)
+    revisit: list[str] = Field(max_length=20)
+    notes: str = Field(max_length=5000)
+
+
+class Digest(BaseModel):
+    title: str = Field(min_length=1, max_length=150)
+    summary: str = Field(min_length=1, max_length=5000)
+    repos: list[RepositoryDigest] = Field(min_length=1)
