@@ -1251,3 +1251,75 @@ dialog .dialog-actions {
     11px/1.9 ui-monospace,
     monospace;
 }
+
+.repo-connections {
+  margin: 28px 0;
+  padding: 20px 0;
+  border-block: 1px solid var(--line);
+}
+.repo-setup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.repo-setup-heading h3 {
+  margin: 0;
+}
+.repo-connection {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+}
+.repo-check {
+  color: var(--blue);
+  padding-top: 2px;
+}
+.repo-connection b {
+  font-size: 12px;
+  font-weight: 500;
+}
+.repo-connection small {
+  display: block;
+  font:
+    10px/1.8 ui-monospace,
+    monospace;
+  overflow-wrap: anywhere;
+}
+.repo-connection > div {
+  min-width: 0;
+}
+.repo-hint {
+  font-size: 11px;
+}
+.terminal-command {
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  align-items: center;
+  margin: 22px 0;
+  padding: 16px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.terminal-command code {
+  color: var(--blue);
+}
+@container (max-width:500px) {
+  .repo-setup-heading,
+  .terminal-command {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .setup {
+    padding: 22px;
+  }
+}
+
+.setup .repo-connections + .card-footer {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}

@@ -19,21 +19,25 @@ The repository is currently private, so Git access is required. If you use GitHu
 uv tool install --python 3.11 /path/to/scire
 ```
 
-On first use, pick an existing OpenCode account or connect a provider, select `provider/model`, then choose repositories and describe your experience in the browser. To connect another account, run `scire setup --connect`. Login, browser OAuth and key entry happen inside OpenCode. Scire does not collect credentials in its web app. Provider and subscription access follow what OpenCode supports.
+On first use, Scire searches your folders for Git repositories and shows a searchable terminal checklist. Use ↑/↓ to move, Space to select and Enter to connect. Existing connections start selected. Then pick an existing OpenCode account or connect a provider, select `provider/model`, and describe your experience in the browser. Repository paths are never entered in the web app. To connect another account, run `scire setup --connect`. Login, browser OAuth and key entry happen inside OpenCode. Scire does not collect credentials in its web app. Provider and subscription access follow what OpenCode supports.
+
+Run `scire setup` again to change connected repositories. The list includes a folder browser for searching elsewhere without typing a path. Disconnecting a repository keeps its learning history. Discovery reads directory and Git metadata, skips dependency/cache/media folders and symlinks, and has a time and depth limit. It starts no AI work.
 
 `scire init` is an alias for `scire setup`. A fast triage model can be selected in Settings; otherwise Scire uses your main model.
 
 ## Use
 
 ```sh
-scire learn --repo ~/work/project
-scire review 123 --repo ~/work/project
-scire review https://github.com/owner/project/pull/123 --repo ~/work/project
-scire review main...feature --repo ~/work/project
-scire ask "How does a request reach its handler?" --repo ~/work/project
-scire map --repo ~/work/project
+scire learn
+scire review 123
+scire review https://github.com/owner/project/pull/123
+scire review main...feature
+scire ask "How does a request reach its handler?"
+scire map
 scire prefetch
 ```
+
+Commands use the current repository, the only connected repository, or a terminal chooser when several are connected. Scripts can still supply `--repo` explicitly.
 
 The browser is the main workspace. Choose skip, skim, standard or deep for each area before your first lesson. Read a module as soon as it arrives; OpenCode's public progress and elapsed time remain visible while the rest is generated. Click a source reference to pin the code pane, resize it, or step through an identifier's uses.
 

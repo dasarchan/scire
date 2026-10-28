@@ -36,8 +36,7 @@ class Service:
             if s["status"] in {"working", "queued"}:
                 s["status"] = "interrupted"
                 self.store.save_session(s)
-        for repo in self.store.repos():
-            self.queue_map(repo["id"])
+        self.sync_repos()
         self.maintenance = asyncio.create_task(self.maintain())
 
     async def close(self):
@@ -88,8 +87,15 @@ class Service:
     async def maintain(self):
         while True:
             await asyncio.sleep(60)
-            for repo in self.store.repos():
-                self.queue_map(repo["id"])
+            self.sync_repos()
+
+    def sync_repos(self, retry_errors=False):
+        profile = self.store.profile()
+        if not profile.get("setup") or not profile.get("model"):
+            return
+        for repo in self.store.repos():
+            state = read_json(self.store.repo_dir(repo["id"]) / "map.json", {})
+            self.queue_map(repo["id"], retry_errors and state.get("status") in {"error", "interrupted"})
 
     def queue_map(self, rid, force=False):
         key = "map:" + rid

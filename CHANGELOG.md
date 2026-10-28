@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.1 — 2026-10-27
+
+- Discover local Git repositories during terminal setup and select connections with a searchable checklist.
+- Add keyboard folder browsing for repositories outside the initial search.
+- Remove repository path entry from the web app; show terminal-selected connections and sync changes without losing profile edits.
+- Keep learner history when disconnecting repositories and wait until profile setup finishes before starting automatic maps.
+
 ## v0.1.0 — 2026-10-27
 
 - Introduce Scire: a Python CLI and local browser workspace for keeping codebase understanding current.

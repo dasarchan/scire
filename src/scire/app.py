@@ -106,6 +106,8 @@ def create_app(token=None, service=None):
     @app.post("/api/setup")
     async def setup(request: Request):
         value = await request.json()
+        if value.get("paths"):
+            raise ValueError("Connect repositories in your terminal with scire setup")
         if any(
             not isinstance(value[k], str) or len(value[k]) > 2000
             for k in ("name", "role", "model", "cheap_model")
@@ -119,14 +121,16 @@ def create_app(token=None, service=None):
         }
         prior = store.profile()
         store.save_profile(profile)
-        if service and value.get("map_now", True) and profile.get("model") != prior.get("model"):
+        if service and value.get("map_now", True) and profile.get("model"):
             for repo in store.repos():
-                service.queue_map(repo["id"], True)
-        for path in value.get("paths", []):
-            repo = store.add_repo(path)
-            if service and value.get("map_now", True):
-                service.queue_map(repo["id"])
+                service.queue_map(repo["id"], profile.get("model") != prior.get("model"))
         return {"ok": True}
+
+    @app.post("/api/repos/sync")
+    async def sync_repos():
+        if service:
+            service.sync_repos(retry_errors=True)
+        return {"repos": store.repos()}
 
     @app.get("/api/models")
     async def models():
